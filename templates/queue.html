@@ -62,6 +62,8 @@
 </style>
 
 <script>
+  const refreshInterval = {{ refresh_interval }};
+
   async function loadQueue() {
     const res = await fetch("/api/queue");
     const data = await res.json();
@@ -162,6 +164,7 @@
   }
 
   loadQueue();
+  setInterval(loadQueue, refreshInterval);
 </script>
 {% endblock %}
 

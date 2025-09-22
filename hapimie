@@ -428,14 +428,15 @@ async def get_coreshowchannels():
     hero="CoreShowChannels"
     return(trichan(await action(hero)))
 
-
 @app.get("/queue", response_class=HTMLResponse)
 async def queue(request: Request):
     """
     Affichage des queues
     """
+    refresh_interval = 5000  # en millisecondes
     return templates.TemplateResponse("queue.html", {
-        "request": request
+        "request": request,
+        "refresh_interval": refresh_interval
     })
 @declare_path(app, "get", f"{cfg['API_PATH']}/queue")
 @declare_path(app, "get", f"{cfg['API_PATH']}/queue/",include_in_schema=False)
