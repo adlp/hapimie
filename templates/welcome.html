@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}Bienvenue{% endblock %}
+
+{% block content %}
+  <h1>Bienvenue {{ user }}</h1>
+  <p>Tu es connecté en tant que <strong>{{ user }}</strong>.</p>
+
+
+  <table id="commands-table">
+    <thead>
+      <a href="/ligne">Lignes</a></p>
+      <a href="/endpoints">endpoints</a></p>
+      <a href="/dbview">database</a></p>
+      <a href="/docs">sa Swwwaaagg</a></p>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+{% endblock %}
+

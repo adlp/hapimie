@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>{% block title %}Ma page{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #eee;
+      padding: 10px 20px;
+    }
+    .user-info {
+      font-weight: bold;
+    }
+    .user-info a {
+      text-decoration: none;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div><a href="/">🏠 Accueil</a> <a href="/ligne">☎️ </a></div>
+    {% if user %}
+    <div class="user-info">
+      Connecté en tant que <a href="/logout">{{ user }}</a>
+    </div>
+    {% endif %}
+    <div><a href="/help">🔍 Help</a></div>
+  </div>
+
+  <div class="content">
+    {% block content %}{% endblock %}
+  </div>
+
+  <p>
+  <div class="header">
+    <div><a href="/">🏠 Accueil</a> <a href="/ligne">☎️ </a></div>
+    <a href="#" class="btn btn-default">Retour en haut ↑</a>
+    <div><a href="/help">🔍 Help</a></div>
+  </div>
+</body>
+</html>
+

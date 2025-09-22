@@ -1,0 +1,627 @@
+#!/usr/bin/env python3
+
+# -*- coding: utf-8 -*-
+# Copyright (C) 2025 Antoine DELAPORTE
+# Licensed under the EUPL v.1.2
+# See LICENSE file or https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12
+
+from fastapi import FastAPI, Request, Form, Response, Depends, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
+
+from panoramisk.manager import Manager
+
+import asyncio
+from pprint import pprint
+
+import os,argparse,sys,configparser
+
+
+app = FastAPI(
+    title="Hapimie",
+    description="Happy l'api amie de l'AMI",
+    version="0.0.2",
+    docs_url="/docs",      # URL de Swagger
+    redoc_url="/redoc",    # URL de Redoc
+    openapi_url="/openapi.json"  # Spécification OpenAPI
+    )
+
+# Montage des fichiers statiques et templates
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
+
+# Utilisateurs autorisés TODO a compltement refaire
+USERS = {
+    "toto": "Hello Toto",
+    "titi": "Tu as les cheveux violet Titi"
+}
+
+parser = argparse.ArgumentParser(
+    description="Happy l'api amie de l'AMI"
+    )
+parser.add_argument("--cfgfile", default="/usr/local/etc/hapimie.cfg", help="Specify a config file")
+parser.add_argument("--name", default="default", help="Specify a config file")
+
+# 🧩 Analyse des arguments
+args,unknown = parser.parse_known_args()
+
+# ⚠️ Gestion des arguments inconnus
+if unknown:
+    print("❌ Arguments inconnus :", ' '.join(unknown))
+    parser.print_help()
+    sys.exit(1)
+
+if os.path.exists(args.cfgfile) and os.path.isfile(args.cfgfile):
+    config= configparser.ConfigParser()
+    config.optionxform=str
+    config.read(args.cfgfile)
+    if args.name not in config.keys():
+        print(f'No {args.name} in {args.cfgfile}... OOOoooops')
+        sys.exit(1)
+else:
+    print(f'No {args.cfgfile}.... Kouik')
+    sys.exit(1)
+
+cfg={}
+cfg['API_PORT']= 8888
+cfg['API_HOST']= "0.0.0.0"
+cfg['AMI_HOST']= "127.0.0.1"
+cfg['API_PATH']= "/api"
+cfg['AMI_PORT']= 5038
+cfg['AMI_USER']= "asterisk"
+cfg['AMI_PASS']= "Sangoku"
+cfg['MAX_RETRIES']= 3
+cfg['RETRY_DELAY']= 3  # secondes
+for elem in cfg.keys():
+    if elem not in config[args.name]:
+        continue
+    cfg[elem]=config[args.name][elem]
+for elem in ['API_PORT','AMI_PORT','MAX_RETRIES','RETRY_DELAY']:
+    i=cfg[elem]
+    cfg[elem]=int(i)
+
+### # Vérification du cookie
+### def get_current_user(request: Request):
+###     user = request.cookies.get("user")
+###     if user in USERS:
+###         return user
+###     raise HTTPException(status_code=401)
+
+# Page d'accueil avec formulaire de login
+@app.get("/", response_class=HTMLResponse)
+def home(request: Request):
+    user = request.cookies.get("user")
+    if user in USERS:
+        return templates.TemplateResponse("welcome.html", {"request": request, "user": user})
+    return templates.TemplateResponse("login.html", {"request": request})
+
+# Traitement du formulaire
+@app.post("/login",include_in_schema=False)
+def login(response: Response, username: str = Form(...)):
+    if username in USERS:
+        response = RedirectResponse(url="/", status_code=302)
+        response.set_cookie(key="user", value=username, httponly=True)
+        return response
+    return RedirectResponse(url="/", status_code=302)
+
+@app.get("/secret",response_class=HTMLResponse)
+def secret_page(request: Request):
+    user = request.cookies.get("user")
+    if user not in USERS:
+        return templates.TemplateResponse("unauthorized.html", {"request": request})
+    return templates.TemplateResponse("secret.html", {"request": request, "user": user})
+
+@app.get("/logout", response_class=HTMLResponse)
+def logout_page(request: Request):
+    user = request.cookies.get("user")
+    return templates.TemplateResponse("logout.html", {"request": request, "user": user})
+
+@app.post("/logout")
+def logout(response: Response):
+    response = RedirectResponse(url="/", status_code=302)
+    response.delete_cookie("user")
+    return response
+
+##########################################################################################
+# === AMI Manager ===
+manager = Manager(
+    host=cfg['AMI_HOST'],
+    port=cfg['AMI_PORT'],
+    username=cfg['AMI_USER'],
+    secret=cfg['AMI_PASS'],
+    forgetable_actions=('login',)
+    )
+
+async def wait_for_protocol():
+    """
+    Attend que la connexion soit prête
+    """
+    for _ in range(20):  # max 2 secondes
+        if manager.protocol:
+            return
+        print("Reconnexion a l'AMI")
+        await asyncio.sleep(0.1)
+    raise RuntimeError("Connexion AMI non établie")
+
+async def action(param=None):
+    """
+    Envoie une action AMI via Panoramisk et transforme la réponse en dictionnaire(s) nettoyé(s).
+    - Supprime les clés inutiles comme 'ActionID'
+    - Gère les réponses multiples (listes d'événements)
+    TODO: mieux gerer le wait_for_protocol
+    """
+    if param is None:
+        hero={"Action": "ping"}
+    if type(param) == dict:
+        hero=param
+    elif type(param) == str:
+        hero={"Action": param}
+    else:
+        hero={"Action": "ping"}
+
+    print(hero)
+    await wait_for_protocol()
+
+    for attempt in range(1, cfg['MAX_RETRIES'] + 1):
+        try:
+            response = await asyncio.wait_for(manager.send_action(hero), timeout=cfg['RETRY_DELAY'])
+            pprint("Answer")
+            break
+        except (asyncio.TimeoutError, ConnectionError) as e:
+            print(f"⚠️ Tentative {attempt} échouée : {e}")
+            if attempt < cfg['MAX_RETRIES']:
+                print(f"⏳ Nouvelle tentative dans {cfg['RETRY_DELAY']} secondes...")
+                manager.close()
+                await asyncio.sleep(cfg['RETRY_DELAY']/2)
+                manager.connect()
+                await asyncio.sleep(cfg['RETRY_DELAY']/2)
+            else:
+                print("💥 Plantage après 3 tentatives.")
+                response={"error": "Plantage après 3 relances inefficaces"}
+                break
+###
+
+    def clean(entry):
+        d = dict(entry.items()) if hasattr(entry, "items") else entry
+        if not isinstance(d, dict):
+            return None
+        if d.get("EventList") in ("start", "Complete"):
+            return None
+        return {k: v for k, v in d.items() if k != "ActionID"}
+
+    if isinstance(response, list):
+        return [r for r in (clean(item) for item in response) if r]
+    elif hasattr(response, "items"):
+        cleaned = clean(response)
+        return cleaned if cleaned else {}
+    else:
+        return {"raw": str(response)}
+
+
+def declare_path(app, method: str, path: str, *, summary: str = None, include_in_schema: bool = True):
+    """
+    Permet de preformarter pour swag, car, ca swag
+    """
+    def decorator(func):
+        doc = func.__doc__ or "Pas de description disponible."
+        lines = doc.strip().split("\n")
+
+        # Si summary est vide, on prend la première ligne de la docstring
+        effective_summary = summary or (lines[0].strip() if lines else "Pas de résumé")
+        # Le reste de la docstring devient la description
+        description = "\n".join(lines[1:]).strip() if len(lines) > 1 else None
+
+        route = getattr(app, method)
+        route(
+            path,
+            description=doc,
+            summary=effective_summary,
+            include_in_schema=include_in_schema,
+            )(func)
+        return func
+    return decorator
+
+
+@app.on_event("startup")
+def startup():
+    print("Connexion a l'AMI")
+    manager.connect()
+
+@app.get("/close", response_class=HTMLResponse,include_in_schema=False)
+def close(request: Request):
+    manager.close()
+    user = request.cookies.get("user")
+    return templates.TemplateResponse("welcome.html", {"request": request, "user": user})
+
+@app.get("/json/{nom}", response_class=HTMLResponse)
+def json_view_dynamic(request: Request, nom: str):
+    return templates.TemplateResponse("json-view-dynamic.html", {
+        "request": request,
+        "command_name": nom
+    })
+
+@app.get("/help", response_class=HTMLResponse)
+def show_help(request: Request):
+    return templates.TemplateResponse("help.html", {"request": request})
+@app.get("/help/{nom}", response_class=HTMLResponse)
+def show_help_detail(request: Request, nom: str):
+    return templates.TemplateResponse("help-detail.html", {
+        "request": request,
+        "help": nom
+    })
+
+@declare_path(app, "get", cfg['API_PATH']+"/help-syntax/{command}")
+async def get_help_stx(command: str = None):
+    """
+    Renvoie uniquement la syntax de la commande donnée en parametre
+    """
+    if command is None:
+        return{}
+    hero = {"Action": "Command","command": f"manager show command {command}"}
+    ret = {}
+    doc = await action(hero)
+    for ligne in doc['Output']:
+        if len(ligne)==0:
+            break
+        neli=ligne.replace('[','').replace(']','').split(':',2)
+        if len(neli) != 2:
+            continue
+        if neli[0] in [ "Syntax","Action","ActionID" ]:
+            continue
+        ret[neli[0]]=neli[1]
+        
+    return ( ret )
+@app.post(cfg['API_PATH']+"/help-exec")
+async def help_exec(request: Request):
+    form = await request.form()
+    data = dict(form)
+    data["Action"] = form.get("Action")
+
+    # Simuler une réponse API
+    #return({'retour': data})
+    pprint(data)
+    ret=await action(data)
+    pprint(ret)
+    pprint(type(ret))
+
+    response = {
+        "Response": "Success",
+        "Message": f"Commande {data['Action']} exécutée",
+        "Data": data,
+        'Retour': ret
+    }
+
+    return(response)
+
+
+apiListe= {
+    'help':"help",
+    'status':"Affiche les status, presque des channels",
+    'coreshowchannels':"affiche les channels",
+    'queuesummary':'queuesummary',
+    'queuestatus':'queuestatus',
+    'databaseshow': 'databaseshow',
+    'endpoints': 'endpoints',
+    }
+
+@declare_path(app, "get", f"{cfg['API_PATH']}/list")
+def show_api():
+    return {'Commands': apiListe}
+
+def decoupe_lexique(chaine: str):
+    """
+    Découpe une chaîne en (commande, description).
+    Supposé que la commande est le premier mot non vide,
+    suivi d'espaces, puis la description.
+    """
+    # Nettoyer les espaces en début/fin
+    chaine = chaine.strip()
+
+    # Découper sur les espaces multiples
+    import re
+    parties = re.split(r'\s{2,}', chaine)
+
+    if len(parties) >= 2:
+        commande = parties[0].strip()
+        description = " ".join(parties[1:]).strip()
+        return commande, description
+    else:
+        return chaine, ""
+
+
+
+@declare_path(app, "get", f"{cfg['API_PATH']}/help",summary="List AMI Commands")
+@declare_path(app, "get", f"{cfg['API_PATH']}/help/",include_in_schema=False)
+@declare_path(app, "get", cfg['API_PATH']+"/help/{command}",summary="Aide sur une commande de l'AMI")
+async def get_help(command: str = None):
+    """
+    Renvoie la doc de l'AMI
+    Si on precise un parametre, c'est ce parametre sur lequel on renverra la doc
+    TODO: gere un cache pour cette commande
+    """
+    #if "status" not in user["permissions"]:
+    #    raise HTTPException(status_code=403, detail="Permission refusée")
+    #response = await manager.send_action({"Action": "Command","command": f"manager show command {command}"})
+
+
+    if command is None:
+        hero = {"Action": "Command","command": "manager show commands"}
+        ret=await action(hero)
+        if "Output" in ret.keys() and isinstance(ret["Output"], list):
+            ret['Commands']={}
+            for ligne in ret['Output']:
+                cmd,desc=decoupe_lexique(ligne)
+                if cmd not in ['Action','------']:
+                    ret['Commands'][cmd]=desc
+            del(ret["Output"])
+        return(ret)
+    else:
+        hero = {"Action": "Command","command": f"manager show command {command}"}
+    return ( await action(hero))
+
+
+
+def trichan(allChan):
+    ret={}
+    ret['Channels']={}
+    ret['Phones']={}
+    ret['Caller']={}
+    lnkt={}
+
+    for call in allChan:
+        ret['Channels'][call['Channel']]=call
+        lnkt[call['Uniqueid']]=call['Channel']
+
+    for call in allChan:
+        phone=call['Channel'].split('-')[0]
+        if call['Linkedid'] in lnkt.keys():
+            ret['Channels'][call['Channel']]['_Linkedid']=lnkt[call['Linkedid']]
+        if 'DNID' in call.keys() and call['Uniqueid'] == call['Linkedid']:
+            ret['Channels'][call['Channel']]['_Call']=call['DNID']
+            ret['Caller'][call['Channel']]=[]
+        else:
+            ret['Channels'][call['Channel']]['_Call']='_Receiving'
+        ret['Channels'][call['Channel']]['_Phone']=phone
+
+        if phone not in ret['Phones']:
+            ret['Phones'][phone]=[]
+        ret['Phones'][phone].append(call['Channel'])
+
+        if 'Variable' in call.keys():
+            ret['Channels'][call['Channel']]['Variables']={}
+            for ligne in call['Variable']:
+                clef,val=ligne.split('=',1)
+                ret['Channels'][call['Channel']]['Variables'][clef]=val
+
+    if len(ret['Caller']):
+        for call in allChan:
+            if ret['Channels'][call['Channel']]['_Call']=='_Receiving':
+                ret['Caller'][call['_Linkedid']].append(call['Channel'])
+    return(ret)
+
+@declare_path(app,"get", f"{cfg['API_PATH']}/status")
+#async def get_status(user=Depends(get_current_user)):
+async def get_status():
+    """
+    Renvoie le status.... hmmmm ca ressemble a un coreshowchannel
+    """
+    hero = {'Action':"Status","AllVariables":"True"}
+    return(trichan(await action(hero)))
+
+@declare_path(app,"post",cfg['API_PATH']+"/HangUp")
+async def hangup(request: Request):
+    data= await request.json()
+    Channel=data.get("channel_id")
+    if Channel is None:
+        raise HTTPException(status_code=508)
+    hero={'action':'HangUp', 'Channel': Channel,'Cause': 'API Call' }
+    return(await action(hero))
+
+@app.get("/ligne", response_class=HTMLResponse)
+def ligne_view(request: Request):
+    user = request.cookies.get("user")
+    refresh_interval = 5000  # en millisecondes
+    return templates.TemplateResponse("ligne.html", {
+        "request": request,
+        "user": user,
+        "refresh_interval": refresh_interval
+    })
+
+@declare_path(app,"get", f"{cfg['API_PATH']}/coreshowchannels")
+async def get_coreshowchannels():
+    """
+    Affiche les channels en cours
+    """
+    hero="CoreShowChannels"
+    return(trichan(await action(hero)))
+
+
+
+@declare_path(app, "get", f"{cfg['API_PATH']}/queuesummary")
+@declare_path(app, "get", f"{cfg['API_PATH']}/queuesummary/",include_in_schema=False)
+@declare_path(app, "get", cfg['API_PATH']+"/queuesummary/{queue}")
+async def get_queuesummary(queue: str = None):
+    """
+    Affiche le status des queues
+    """
+    hero="QueueSummary"
+    if queue is not None:
+        hero={'action':'QueueSummary','Queue':queue}
+
+    ret={}
+    for elem in await(action(hero)):
+        ret[elem['Queue']]=elem
+
+    return(ret)
+
+@declare_path(app, "get", f"{cfg['API_PATH']}/queuestatus")
+@declare_path(app, "get", f"{cfg['API_PATH']}/queuestatus/",include_in_schema=False)
+@declare_path(app, "get", cfg['API_PATH']+"/queuestatus/{queue}")
+async def get_queuestatus(queue: str = None):
+    """
+    Affichage du status des queues (et de leurs membre, et appels en attente)
+
+    L'attribut QueueParams contient les caracteritiques de la queue
+    L'attribut QueueEntry contient la liste des appels en attente
+    L'attirbut QueueMember contient l'ensemble des membres.
+    
+    """
+    allmembers=True
+    if queue is None:
+        hero='QueueStatus'
+    elif queue=="_":
+        hero='QueueStatus'
+        allmembers=False
+        queue=None
+    else:
+        hero={'action':'QueueStatus','Queue':queue}
+
+    ret={}
+    allm=await action(hero)
+    for bloc in allm:
+        quenom=bloc['Queue']
+        if quenom not in ret.keys():
+            ret[quenom]={}
+            ret[quenom]["QueueEntry"]={}
+            ret[quenom]["QueueMember"]={}
+
+        if bloc['Event'] == "QueueParams":
+            ret[quenom]['QueueParams']=bloc
+        elif bloc['Event'] == "QueueEntry":
+            ret[quenom]["QueueEntry"][bloc['Channel']]=bloc
+        elif bloc['Event'] == "QueueMember":
+            ret[quenom]["QueueMember"][bloc["Name"]]=bloc
+        elif allmembers:
+            ret[quenom]["FallDown"].append(bloc)
+    return(ret)
+
+@app.get("/dbview", response_class=HTMLResponse)
+async def dbview(request: Request):
+    return templates.TemplateResponse("dbview.html", {
+        "request": request
+    })
+
+#INFO:     127.0.0.1:39512 - "POST /api/dbDel HTTP/1.1" 404 Not Found
+#INFO:     127.0.0.1:39512 - "POST /api/dbPut HTTP/1.1" 404 Not Found
+
+@app.post(cfg['API_PATH']+"/dbPut")
+async def db_put(request: Request):
+    form = await request.form()
+    data = dict(form)
+    data["Action"] = form.get("Action")
+
+    pprint(data)
+    family, key = data['Attribut'].split("/", 1)
+    hero={'Action':'DbPut','family':family,'key':key,'val':data['Val']}
+    ret=await action(hero)
+
+    response = {
+        "Response": "Success",
+        "Message": f"Commande {data['Action']} exécutée",
+        "Data": data,
+        "Action": hero,
+        'Retour': ret
+    }
+
+    return(response)
+
+@app.post(cfg['API_PATH']+"/dbDel")
+async def db_del(request: Request):
+    form = await request.form()
+    data = dict(form)
+    data["Action"] = form.get("Action")
+
+    pprint(data)
+    family, key = data['Attribut'].split("/", 1)
+    hero={'Action':'DbDel','family':family,'key':key}
+    #ret=await action(hero)
+
+    response = {
+        "Response": "Success",
+        "Message": f"Commande {data['Action']} exécutée",
+        "Data": data,
+        "Action": hero,
+    #    'Retour': ret
+    }
+
+    return(response)
+
+@declare_path(app,"get", f"{cfg['API_PATH']}/databaseshow")
+async def get_databaseshow():
+    hero = {"Action": "Command","command": "database show"}
+    resp=await action(hero)
+    ret={}
+    datas=resp['Output']
+    datas.pop()
+    for ligne in datas:
+        cmd,desc=decoupe_lexique(ligne)
+        if cmd.startswith('/subscription_persistence/'):
+            continue
+        elif cmd.startswith('/registrar/'):
+            continue
+        elif cmd.startswith('/CustomPresence/'):
+            continue
+        elif cmd.startswith('/CustomDevstate/'):
+            continue
+
+        ret[cmd[1:]]=desc[2:]
+    return(ret)
+
+@app.get("/endpoints", response_class=HTMLResponse)
+def endpoints_view(request: Request, refresh: int = 5):
+    return templates.TemplateResponse("endpoints.html", {
+        "request": request,
+        "refresh_interval": refresh * 1000  # en millisecondes pour JS
+    })
+
+@declare_path(app, "get", f"{cfg['API_PATH']}/endpoints")
+async def get_endpoints():
+    """
+    Affiche tout les endpoints iax/pjsip
+    """
+    ret={}
+    hero="PJSIPShowEndpoints"
+    allend=await action(hero)
+    for onened in allend:
+        ide="PJSIP/"+onened["ObjectName"]
+        ret[ide]={}
+        ret[ide]['ObjectName']=onened["ObjectName"]
+        ret[ide]['Type']="PJSIP"
+        ret[ide]['Contacts']=onened['Contacts']
+        ret[ide]['Up']=True
+        if onened['DeviceState']=="Unavailable":
+            ret[ide]['Up']=False
+        ret[ide]['Full']=onened
+        
+    hero="IAXpeerlist"
+    allend=await action(hero)
+    for onened in allend:
+        ide="IAX2/"+onened["ObjectName"]
+        ret[ide]={}
+        ret[ide]['ObjectName']=onened["ObjectName"]
+        ret[ide]['Type']="IAX2"
+        if onened['IPaddress']=="(null)":
+            ret[ide]['Contacts']=onened['IPaddress']
+        ret[ide]['Up']=True
+        if onened['Status']=="UNKNOWN":
+            ret[ide]['Up']=False
+        ret[ide]['Full']=onened
+
+    return(ret)
+
+
+##########################################################################################
+
+if __name__ == "__main__":
+    import uvicorn
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # ou ["http://localhost:3000"]
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        )
+    uvicorn.run(app, host=cfg['API_HOST'], port=cfg['API_PORT'])
+

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Lignes actives{% endblock %}
+
+{% block content %}
+<h1>📡 Lignes en cours</h1>
+<div id="content">Chargement...</div>
+
+<div id="popup" class="popup" style="display:none;">
+  <span class="popup-close" onclick="closePopup()">❌</span>
+  <h3>Détails du canal</h3>
+  <pre id="popup-content"></pre>
+</div>
+
+<script>
+  const refreshInterval = {{ refresh_interval }};
+  async function loadStatus() {
+    try {
+      const res = await fetch("/api/status");
+      const apir = await res.json();
+      const caller = apir.Caller;
+      const channels = apir.Channels;
+      const container = document.getElementById("content");
+      container.innerHTML = "";
+
+      Object.entries(caller).forEach(([sourceId, targetIds]) => {
+        const source = channels[sourceId];
+        const sourceVar = source['Variables'];
+        const caller = source['CallerIDName'] || "AnonyMous";
+        const calling = sourceVar['QUEUE_NAME'] || source['DNID'];
+        const app = source['Application'];
+        const block = document.createElement("div");
+        block.className = "caller-block";
+
+        const sourceLine = `<span class="channel-id" onclick="showPopup('${sourceId}')">${source._Phone} / ${caller}</span> ➜ `;
+        block.innerHTML = `<strong>${sourceLine}</strong> ${app} ➜`;
+
+        targetIds.forEach(targetId => {
+          const target = channels[targetId];
+          const stacall = target.ChannelStateDesc || "—";
+          const quecalled = target['Variables']['QUEUE_NAME'] || target['Variables']['DIALEDNUMBER'] || '';
+          const called = target._Phone
+          const seconds = target.Seconds || "—";
+          const line = `
+            ${stacall} ${quecalled} [ <span class="channel-id" onclick="showPopup('${targetId}')">${target._Phone}</span> (${seconds} sec.) ]
+            <a href="#" onclick="hangup('${targetId}'); return false;">HangUP</a>
+            <a href="/transfert/{{ target }}">Transfert</a>
+          `;
+          block.innerHTML += line + "<br>";
+        });
+
+        container.appendChild(block);
+      });
+    } catch (err) {
+      document.getElementById("content").innerHTML = "<p>Erreur de chargement.</p>";
+      console.error(err);
+    }
+  }
+
+  function showPopup(id) {
+    fetch("/api/status")
+      .then(res => res.json())
+      .then(apir => {
+        const data = apir.Channels[id];
+        document.getElementById("popup-content").textContent = JSON.stringify(data, null, 2);
+        document.getElementById("popup").style.display = "block";
+      });
+  }
+
+  function closePopup() {
+    document.getElementById("popup").style.display = "none";
+  }
+
+  function hangup(id) {
+    fetch(`/api/HangUp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel_id: id })
+    })
+    .then(res => res.json())
+    .then(data => {
+      console.log("Réponse HangUp:", data);
+      // Optionnel : recharger la page ou les données
+      loadStatus(); // si tu veux rafraîchir sans recharger
+    })
+    .catch(err => console.error("Erreur HangUp:", err));
+  }
+
+  loadStatus();
+  setInterval(loadStatus, refreshInterval);
+</script>
+{% endblock %}
+

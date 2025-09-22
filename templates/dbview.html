@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}🗃️ Base de données{% endblock %}
+
+{% block content %}
+<h1>🗂️ Éditeur de base de données</h1>
+<table border="1" cellpadding="2" id="db-table">
+  <thead>
+    <tr><th>Clé</th><th>Valeur</th></tr>
+  </thead>
+  <tbody id="db-body">
+    <tr><td colspan="2">Chargement...</td></tr>
+  </tbody>
+</table>
+
+<div id="popup" class="popup" style="display:none;">
+  <span class="popup-close" onclick="closePopup()">❌</span>
+  <h3>Résultat</h3>
+  <pre id="popup-content"></pre>
+</div>
+
+<style>
+  .popup {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    border: 2px solid #444;
+    padding: 20px;
+    z-index: 1000;
+    box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+    border-radius: 8px;
+  }
+td, th {
+  padding: 2px 6px; /* moins d'espace intérieur */
+  font-size: 0.85em; /* texte plus petit */
+  line-height: 1.1;
+}
+
+td:nth-child(1) {
+  white-space: normal;      /* Autorise les retours à la ligne */
+  word-break: break-word;   /* Coupe les mots longs si nécessaire */
+  max-width: 300px;         /* Optionnel : limite la largeur */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: auto;
+  white-space: normal;
+  word-break: break-word;
+}
+
+td:nth-child(2) {
+  width: 300px; /* champ de saisie plus petit */
+  white-space: normal;      /* Autorise les retours à la ligne */
+  word-break: break-word;   /* Coupe les mots longs si nécessaire */
+  max-width: 400px;         /* Optionnel : limite la largeur */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#db-table {
+  font-size: 0.85em;
+  width: auto;
+  border-collapse: collapse;
+}
+.endpoint-item {
+  padding: 4px;
+  margin: 2px;
+}
+table {
+  border-collapse: collapse;
+  table-layout: auto;
+  width: 100%;
+}
+
+tr {
+  margin: 0;
+  padding: 0;
+}
+
+
+</style>
+
+<script>
+  async function loadDatabase() {
+    const res = await fetch("/api/databaseshow");
+    const data = await res.json();
+    const tbody = document.getElementById("db-body");
+    tbody.innerHTML = "";
+
+    Object.entries(data).forEach(([key, value]) => {
+      const row = document.createElement("tr");
+
+      // Colonne clé + lien suppression
+      const keyCell = document.createElement("td");
+      keyCell.innerHTML = `
+        ${key}<a href="#" onclick="deleteKey('${key}'); return false;">🗑️ Supprimer</a>`;
+      row.appendChild(keyCell);
+
+      // Colonne valeur + champ + lien mise à jour
+      const valCell = document.createElement("td");
+      valCell.innerHTML = `
+        <input type="text" id="val-${key}" value="${value}" style="width:70%;">
+        <a href="#" onclick="updateKey('${key}'); return false;">💾 Maj</a>
+      `;
+      row.appendChild(valCell);
+
+      tbody.appendChild(row);
+    });
+  }
+
+  async function deleteKey(key) {
+    const res = await fetch("/api/dbDel", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ Attribut: key })
+    });
+    const result = await res.json();
+    showPopup(result);
+    await loadDatabase();
+  }
+
+  async function updateKey(key) {
+    const newVal = document.getElementById(`val-${key}`).value;
+    const res = await fetch("/api/dbPut", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ Attribut: key, Val: newVal })
+    });
+    const result = await res.json();
+    showPopup(result);
+    await loadDatabase();
+  }
+
+  function showPopup(data) {
+    document.getElementById("popup-content").textContent = JSON.stringify(data, null, 2);
+    document.getElementById("popup").style.display = "block";
+  }
+
+  function closePopup() {
+    document.getElementById("popup").style.display = "none";
+  }
+
+  loadDatabase();
+</script>
+{% endblock %}
+

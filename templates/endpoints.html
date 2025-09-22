@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}📡 Endpoints{% endblock %}
+
+{% block content %}
+<h1>📞 Liste des Endpoints</h1>
+<div id="endpoint-list">Chargement...</div>
+
+<div id="overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:999;"></div>
+
+<div id="popup" class="popup" style="display:none;">
+  <span class="popup-close" onclick="closePopup()">❌</span>
+  <h3>Détails de l'endpoint</h3>
+  <pre id="popup-content"></pre>
+</div>
+
+<style>
+  .endpoint-item {
+    padding: 10px;
+    margin: 5px;
+    cursor: pointer;
+    border-radius: 5px;
+  }
+  .up-true-free { background-color: #c8f7c5; }
+  .up-true-busy { background-color: #fff3a3; }
+  .up-false { background-color: #f4f4f4; }
+</style>
+
+<script>
+  const refreshInterval = {{ refresh_interval }};
+
+  async function loadEndpoints() {
+    const [endpointsRes, statusRes] = await Promise.all([
+      fetch("/api/endpoints"),
+      fetch("/api/status")
+    ]);
+    const endpoints = await endpointsRes.json();
+    const status = await statusRes.json();
+    const phones = status.Phones || {};
+
+    const container = document.getElementById("endpoint-list");
+    container.innerHTML = "";
+
+    Object.entries(endpoints).forEach(([key, data]) => {
+      const objectName = data.ObjectName;
+      const isUp = data.Up;
+      const isBusy = Object.keys(phones).includes(key);
+
+      let cssClass = "endpoint-item ";
+      if (!isUp) cssClass += "up-false";
+      else cssClass += isBusy ? "up-true-busy" : "up-true-free";
+
+      const div = document.createElement("div");
+      div.className = cssClass;
+      div.textContent = objectName;
+      div.onclick = () => showPopup(data);
+      container.appendChild(div);
+    });
+  }
+
+  function showPopup(data) {
+    document.getElementById("popup-content").textContent = JSON.stringify(data, null, 2);
+    document.getElementById("popup").style.display = "block";
+    document.getElementById("overlay").style.display = "block";
+  }
+
+  function closePopup() {
+    document.getElementById("popup").style.display = "none";
+    document.getElementById("overlay").style.display = "none";
+  }
+
+  loadEndpoints();
+  setInterval(loadEndpoints, refreshInterval);
+</script>
+{% endblock %}

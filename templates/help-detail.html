@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Aide complète : {{ help }}{% endblock %}
+
+{% block content %}
+<h1>🧠 Aide complète pour <code>{{ help }}</code></h1>
+
+<div id="form-section">
+  <h2>📝 Formulaire de test</h2>
+  <form id="help-form">
+    <div id="form-fields">Chargement du formulaire...</div>
+    <button type="submit">Exécuter</button>
+  </form>
+</div>
+
+<div id="popup" class="popup" style="display:none;">
+  <span class="popup-close" onclick="closePopup()">❌</span>
+  <h3>Résultat de l'exécution</h3>
+  <pre id="popup-content"></pre>
+</div>
+
+<hr>
+
+<div id="raw-section">
+  <h2>📄 Contenu brut de /api/help/{{ help }}</h2>
+  <pre id="raw-content">Chargement...</pre>
+</div>
+
+<style>
+  .popup {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    border: 2px solid #444;
+    padding: 20px;
+    z-index: 1000;
+    box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+    border-radius: 8px;
+  }
+</style>
+
+<script>
+  const help = "{{ help }}";
+
+  async function loadSyntax() {
+    const res = await fetch(`/api/help-syntax/${help}`);
+    const syntax = await res.json();
+    const container = document.getElementById("form-fields");
+    container.innerHTML = "";
+
+    Object.keys(syntax).forEach(key => {
+      const group = document.createElement("div");
+      group.innerHTML = `
+        <label>
+          <input type="checkbox" name="use_${key}" checked>
+          Inclure <strong>${key}</strong>
+        </label>
+        <input type="text" name="${key}" placeholder="${key}">
+      `;
+      container.appendChild(group);
+    });
+  }
+
+  async function loadRawHelp() {
+    const res = await fetch(`/api/help/${help}`);
+    const data = await res.json();
+    document.getElementById("raw-content").textContent = JSON.stringify(data, null, 2);
+  }
+
+  document.getElementById("help-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const formData = new FormData();
+
+    for (const el of form.elements) {
+      if (el.name && !el.name.startsWith("use_")) {
+        const checkbox = form.querySelector(`[name="use_${el.name}"]`);
+        if (checkbox && checkbox.checked) {
+          formData.append(el.name, el.value || "");
+        }
+      }
+    }
+
+    formData.append("Action", help);  // Ajout du champ Action
+
+    const res = await fetch(`/api/help-exec`, {
+      method: "POST",
+      body: formData
+    });
+    const result = await res.json();
+    document.getElementById("popup-content").textContent = JSON.stringify(result, null, 2);
+    document.getElementById("popup").style.display = "block";
+  });
+
+  function closePopup() {
+    document.getElementById("popup").style.display = "none";
+  }
+
+  loadSyntax();
+  loadRawHelp();
+</script>
+{% endblock %}
