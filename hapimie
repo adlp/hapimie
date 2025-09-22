@@ -296,20 +296,6 @@ async def help_exec(request: Request):
     return(response)
 
 
-apiListe= {
-    'help':"help",
-    'status':"Affiche les status, presque des channels",
-    'coreshowchannels':"affiche les channels",
-    'queuesummary':'queuesummary',
-    'queuestatus':'queuestatus',
-    'databaseshow': 'databaseshow',
-    'endpoints': 'endpoints',
-    }
-
-@declare_path(app, "get", f"{cfg['API_PATH']}/list")
-def show_api():
-    return {'Commands': apiListe}
-
 def decoupe_lexique(chaine: str):
     """
     Découpe une chaîne en (commande, description).
@@ -412,6 +398,9 @@ async def get_status():
 
 @declare_path(app,"post",cfg['API_PATH']+"/HangUp")
 async def hangup(request: Request):
+    """
+    Permet de raccrocher le channel en cours
+    """
     data= await request.json()
     Channel=data.get("channel_id")
     if Channel is None:
@@ -499,6 +488,9 @@ async def get_queuestatus(queue: str = None):
 
 @app.get("/dbview", response_class=HTMLResponse)
 async def dbview(request: Request):
+    """
+    Affichage pour lecture, modification et suppression d'enregistrement dans la DB d'Asterisk
+    """
     return templates.TemplateResponse("dbview.html", {
         "request": request
     })
@@ -550,6 +542,14 @@ async def db_del(request: Request):
 
 @declare_path(app,"get", f"{cfg['API_PATH']}/databaseshow")
 async def get_databaseshow():
+    """
+    Equivalant de "database show" dans la CLI avec suppression de familles
+    Familles supprimées : 
+        - /subscription_persistence/
+        - /registrar/
+        - /CustomPresence/
+        - /CustomDevstate/
+    """
     hero = {"Action": "Command","command": "database show"}
     resp=await action(hero)
     ret={}
@@ -571,6 +571,9 @@ async def get_databaseshow():
 
 @app.get("/endpoints", response_class=HTMLResponse)
 def endpoints_view(request: Request, refresh: int = 5):
+    """
+    Affichage des endpoints
+    """
     return templates.TemplateResponse("endpoints.html", {
         "request": request,
         "refresh_interval": refresh * 1000  # en millisecondes pour JS
