@@ -1,6 +1,9 @@
 # Ignore conf file
 hapimie.cfg
 
+# Ignore vi
+*.swp
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
