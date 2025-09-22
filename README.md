@@ -7,9 +7,8 @@ Une API open source accompagnée d'une interface web, conçue pour [objectif du 
 
 ## Fonctionnalités
 
-- API RESTful pour [fonction principale]
+- API RESTful pour acceder a l'Asterisk Management Interface (AMI)
 - Interface web en HTML/CSS/JS
-- Compatible avec [frameworks ou outils utilisés]
 
 ## Installation
 
@@ -26,6 +25,6 @@ Cela signifie que toute redistribution ou modification doit respecter les termes
 Voir le fichier ![Licence: EUPL v1.2](https://img.shields.io/badge/License-EUPL%20v1.2-blue.svg)
 
 ## Auteur
-Développé par adlp
+Développé par Antoine DELAPORTE
 Contact : hapimie@baball.eu
 Année : 2025
