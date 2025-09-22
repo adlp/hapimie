@@ -4,6 +4,7 @@
 
 {% block content %}
 <h1>📊 Visualisation des queues d'attente</h1>
+<div id="anchor-links" style="margin-bottom: 20px;"></div>
 <div id="queue-container">Chargement…</div>
 
 <!-- Popup -->
@@ -67,6 +68,17 @@
     const container = document.getElementById("queue-container");
     container.innerHTML = "";
 
+    const anchorLinks = document.getElementById("anchor-links");
+    anchorLinks.innerHTML = "<strong>🔗 Accès rapide :</strong> ";
+
+    Object.keys(data).forEach(queueName => {
+      const link = document.createElement("a");
+      link.href = `#anchor-${queueName}`;
+      link.textContent = queueName;
+      link.style.marginRight = "15px";
+      anchorLinks.appendChild(link);
+    });
+
     Object.entries(data).forEach(([queueName, queueData]) => {
       const block = document.createElement("div");
       block.className = "queue-block";
@@ -74,7 +86,8 @@
       // Header
       const header = document.createElement("div");
       header.className = "queue-header";
-      header.textContent = `📁 ${queueName}`;
+      header.id = `anchor-${queueName}`; // ← ancre unique
+      header.innerHTML = `📁 ${queueName} <a href="#top" style="font-size:0.8em;">🔝</a>`;
       block.appendChild(header);
 
       // Layout
