@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}📞 État des queues d'attente{% endblock %}
+
+{% block content %}
+<h1>📊 Visualisation des queues d'attente</h1>
+<div id="queue-container">Chargement…</div>
+
+<!-- Popup -->
+<div id="popup" class="popup" style="display:none;">
+  <span class="popup-close" onclick="closePopup()">❌</span>
+  <h3>Détails JSON</h3>
+  <pre id="popup-content"></pre>
+</div>
+
+<style>
+  .popup {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    border: 2px solid #444;
+    padding: 20px;
+    z-index: 1000;
+    box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+    border-radius: 8px;
+  }
+  .queue-block {
+    margin-bottom: 40px;
+    border: 1px solid #ccc;
+    padding: 10px;
+  }
+  .queue-header {
+    font-size: 1.2em;
+    font-weight: bold;
+    margin-bottom: 10px;
+  }
+  .queue-layout {
+    display: flex;
+    gap: 20px;
+  }
+  table {
+    font-size: 0.85em;
+    border-collapse: collapse;
+  }
+  td, th {
+    padding: 4px 6px;
+    border: 1px solid #999;
+  params-table td {
+    width: 50px;
+    max-width: 50px;
+    word-break: break-word;
+  }
+  params-table {
+    font-size: 0.8em;
+  }
+  }
+</style>
+
+<script>
+  async function loadQueue() {
+    const res = await fetch("/api/queue");
+    const data = await res.json();
+    const container = document.getElementById("queue-container");
+    container.innerHTML = "";
+
+    Object.entries(data).forEach(([queueName, queueData]) => {
+      const block = document.createElement("div");
+      block.className = "queue-block";
+
+      // Header
+      const header = document.createElement("div");
+      header.className = "queue-header";
+      header.textContent = `📁 ${queueName}`;
+      block.appendChild(header);
+
+      // Layout
+      const layout = document.createElement("div");
+      layout.className = "queue-layout";
+
+      // QueueParams
+      const paramsTable = document.createElement("table");
+      const paramsBody = document.createElement("tbody");
+      Object.entries(queueData.QueueParams || {}).forEach(([k, v]) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `<td><strong>${k}</strong></td><td>${v}</td>`;
+        paramsBody.appendChild(row);
+      });
+      paramsTable.appendChild(paramsBody);
+      layout.appendChild(paramsTable);
+
+      // QueueMember
+      const membersTable = document.createElement("table");
+      const membersHead = document.createElement("thead");
+      const membersBody = document.createElement("tbody");
+      const members = queueData.QueueMember || {};
+      const memberKeys = Object.keys(members);
+      const memberAttribs = memberKeys.length ? Object.keys(members[memberKeys[0]]) : [];
+
+      membersHead.innerHTML = "<tr><th>Attribut</th>" + memberKeys.map(k => `<th>${k}</th>`).join("") + "</tr>";
+
+      memberAttribs.forEach(attr => {
+        const row = document.createElement("tr");
+        row.innerHTML = `<td><strong>${attr}</strong></td>` + memberKeys.map(k => `<td>${members[k][attr]}</td>`).join("");
+        membersBody.appendChild(row);
+      });
+
+/*
+      membersHead.innerHTML = "<tr>" + memberKeys.map(k => `<th>${k}</th>`).join("") + "</tr>";
+      memberAttribs.forEach(attr => {
+        const row = document.createElement("tr");
+        row.innerHTML = memberKeys.map(k => `<td>${members[k][attr]}</td>`).join("");
+        membersBody.appendChild(row);
+      });
+*/
+      membersTable.appendChild(membersHead);
+      membersTable.appendChild(membersBody);
+      layout.appendChild(membersTable);
+
+      block.appendChild(layout);
+
+      // QueueEntry
+      const entryList = document.createElement("ul");
+      Object.entries(queueData.QueueEntry || {}).forEach(([key, entry]) => {
+        const li = document.createElement("li");
+        li.innerHTML = `<a href="#" onclick='showPopup(${JSON.stringify(entry)}); return false;'>${entry.CallerIDNum} (${entry.Wait}s)</a>`;
+        entryList.appendChild(li);
+      });
+
+      const entryTitle = document.createElement("h4");
+      entryTitle.textContent = "📥 Entrées en attente";
+      block.appendChild(entryTitle);
+      block.appendChild(entryList);
+
+      container.appendChild(block);
+    });
+  }
+
+  function showPopup(obj) {
+    document.getElementById("popup-content").textContent = JSON.stringify(obj, null, 2);
+    document.getElementById("popup").style.display = "block";
+  }
+
+  function closePopup() {
+    document.getElementById("popup").style.display = "none";
+  }
+
+  loadQueue();
+</script>
+{% endblock %}
+

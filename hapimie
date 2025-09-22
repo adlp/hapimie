@@ -429,47 +429,26 @@ async def get_coreshowchannels():
     return(trichan(await action(hero)))
 
 
-
-@declare_path(app, "get", f"{cfg['API_PATH']}/queuesummary")
-@declare_path(app, "get", f"{cfg['API_PATH']}/queuesummary/",include_in_schema=False)
-@declare_path(app, "get", cfg['API_PATH']+"/queuesummary/{queue}")
-async def get_queuesummary(queue: str = None):
+@app.get("/queue", response_class=HTMLResponse)
+async def queue(request: Request):
     """
-    Affiche le status des queues
+    Affichage des queues
     """
-    hero="QueueSummary"
-    if queue is not None:
-        hero={'action':'QueueSummary','Queue':queue}
-
+    return templates.TemplateResponse("queue.html", {
+        "request": request
+    })
+@declare_path(app, "get", f"{cfg['API_PATH']}/queue")
+@declare_path(app, "get", f"{cfg['API_PATH']}/queue/",include_in_schema=False)
+@declare_path(app, "get", cfg['API_PATH']+"/queue/{queue}")
+async def get_queue(queue:str = None):
+    """
+    Affiche le retour combiné de queuestatus et queusummary
+    """
     ret={}
-    for elem in await(action(hero)):
-        ret[elem['Queue']]=elem
-
-    return(ret)
-
-@declare_path(app, "get", f"{cfg['API_PATH']}/queuestatus")
-@declare_path(app, "get", f"{cfg['API_PATH']}/queuestatus/",include_in_schema=False)
-@declare_path(app, "get", cfg['API_PATH']+"/queuestatus/{queue}")
-async def get_queuestatus(queue: str = None):
-    """
-    Affichage du status des queues (et de leurs membre, et appels en attente)
-
-    L'attribut QueueParams contient les caracteritiques de la queue
-    L'attribut QueueEntry contient la liste des appels en attente
-    L'attirbut QueueMember contient l'ensemble des membres.
-    
-    """
-    allmembers=True
-    if queue is None:
-        hero='QueueStatus'
-    elif queue=="_":
-        hero='QueueStatus'
-        allmembers=False
-        queue=None
-    else:
+    hero='QueueStatus'
+    if queue is not None:
         hero={'action':'QueueStatus','Queue':queue}
 
-    ret={}
     allm=await action(hero)
     for bloc in allm:
         quenom=bloc['Queue']
@@ -486,7 +465,26 @@ async def get_queuestatus(queue: str = None):
             ret[quenom]["QueueMember"][bloc["Name"]]=bloc
         elif allmembers:
             ret[quenom]["FallDown"].append(bloc)
+
+    hero='QueueSummary'
+    if queue is not None:
+        hero={'action':'QueueSummary','Queue':queue}
+    allm=await action(hero)
+    for bloc in allm:
+        quenom=bloc['Queue']
+        #ret[quenom]['QueueParams']["LoggedIn"]=bloc
+        ret[quenom]['QueueParams']["LoggedIn"]=bloc['LoggedIn']
+        ret[quenom]['QueueParams']["Available"]=bloc['Available']
+        ret[quenom]['QueueParams']["Callers"]=bloc['Callers']
+        ret[quenom]['QueueParams']["LongestHoldTime"]=bloc['LongestHoldTime']
+        ret[quenom]['QueueParams']["content"]+='/'+bloc['content']
+        del(ret[quenom]['QueueParams']['Event'])
+        for phone in ret[quenom]["QueueMember"]:
+            del(ret[quenom]["QueueMember"][phone]['Event'])
+            del(ret[quenom]["QueueMember"][phone]['Queue'])
+            del(ret[quenom]["QueueMember"][phone]['Name'])
     return(ret)
+
 
 @app.get("/dbview", response_class=HTMLResponse)
 async def dbview(request: Request):
