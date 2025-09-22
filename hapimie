@@ -235,9 +235,11 @@ def close(request: Request):
     user = request.cookies.get("user")
     return templates.TemplateResponse("welcome.html", {"request": request, "user": user})
 
+@app.get("/json", response_class=HTMLResponse)
+@app.get("/json/", response_class=HTMLResponse)
 @app.get("/json/{nom}", response_class=HTMLResponse)
-def json_view_dynamic(request: Request, nom: str):
-    return templates.TemplateResponse("json-view-dynamic.html", {
+def json_view(request: Request, nom: str = None):
+    return templates.TemplateResponse("json.html", {
         "request": request,
         "command_name": nom
     })

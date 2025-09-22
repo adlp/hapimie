@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}AMI 2 JSON dynamiques{% endblock %}
+
+{% block content %}
+<h1>🔍 Affichage JSON</h1>
+
+<form id="json-form">
+  <label for="command-input">Commande :</label>
+  <input type="text" id="command-input" name="command"
+         value="{{ command_name if command_name else '' }}"
+         placeholder="Entrez une commande" style="width:300px;">
+  <button type="submit">Show JSON</button>
+</form>
+
+<div id="json-result" style="margin-top:20px;">
+  <pre id="json-output">Aucun résultat pour le moment.</pre>
+</div>
+
+<div id="popup" class="popup" style="display:none;">
+  <span class="popup-close" onclick="closePopup()">❌</span>
+  <h3>Détails JSON</h3>
+  <pre id="popup-content"></pre>
+</div>
+
+<style>
+  .popup {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    border: 2px solid #444;
+    padding: 20px;
+    z-index: 1000;
+    box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+    border-radius: 8px;
+  }
+</style>
+
+<script>
+  document.getElementById("json-form").addEventListener("submit", async function(e) {
+    e.preventDefault();
+    const command = document.getElementById("command-input").value.trim();
+    if (!command) {
+      document.getElementById("json-output").textContent = "Veuillez entrer une commande.";
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/${command}`);
+      if (!res.ok) throw new Error("Erreur API");
+      const data = await res.json();
+      document.getElementById("json-output").textContent = JSON.stringify(data, null, 2);
+    } catch (err) {
+      document.getElementById("json-output").textContent = "Erreur lors de l'appel à l'API.";
+    }
+  });
+
+  function showPopup(data) {
+    document.getElementById("popup-content").textContent = JSON.stringify(data, null, 2);
+    document.getElementById("popup").style.display = "block";
+  }
+
+  function closePopup() {
+    document.getElementById("popup").style.display = "none";
+  }
+</script>
+{% endblock %}
