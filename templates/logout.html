@@ -1,14 +1,9 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Déconnexion</title>
-  <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
-  <h1>Déconnexion de {{ user }}</h1>
-  <form method="post" action="/logout">
-    <button type="submit">Confirmer la déconnexion</button>
-  </form>
-</body>
-</html>
+{% extends "base.html" %}
+
+{% block title %}Déconnexion{% endblock %}
+
+{% block content %}
+<h2>👋 Vous êtes déconnecté</h2>
+<p>Merci de votre visite. À bientôt !</p>
+<a href="/login">🔐 Se reconnecter</a>
+{% endblock %}

@@ -23,13 +23,15 @@
 </head>
 <body>
   <div class="header">
-    <div><a href="/">🏠 Accueil</a> <a href="/ligne">☎️ </a><a href="/queue">🐍</a></div>
-    {% if user %}
-    <div class="user-info">
-      Connecté en tant que <a href="/logout">{{ user }}</a>
-    </div>
+    <div><a href="/">🏠 Accueil</a> <a href="/ligne">☎️ </a><a href="/queue">🐍</a><a href="/help">🔍 Help</a></div>
+    <div style="text-align:right; margin-bottom:10px;">
+    {% if login %}
+        👤 Connecté en tant que <strong>{{ login }}</strong> |
+        <a href="/logout">🔓 Se déconnecter</a>
+    {% else %}
+        <a href="/login">🔐 Se connecter</a>
     {% endif %}
-    <div><a href="/help">🔍 Help</a></div>
+    </div>
   </div>
 
   <div class="content">
