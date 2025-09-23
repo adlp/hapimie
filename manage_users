@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+
+import csv
+import argparse
+import os
+import getpass
+from passlib.hash import bcrypt
+
+def load_users(filepath):
+    users = {}
+    if not os.path.exists(filepath):
+        return users
+    with open(filepath, newline='') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            users[row['login']] = row
+    return users
+
+def save_users(filepath, users):
+    with open(filepath, 'w', newline='') as f:
+        fieldnames = ['login', 'password_hash', 'email', 'gecos']
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for user in users.values():
+            writer.writerow(user)
+
+def prompt_password():
+    while True:
+        pw1 = getpass.getpass("Mot de passe : ")
+        pw2 = getpass.getpass("Confirmer : ")
+        if pw1 == pw2:
+            return bcrypt.hash(pw1)
+        print("❌ Les mots de passe ne correspondent pas. Réessayez.")
+
+def main():
+    parser = argparse.ArgumentParser(description="Gestion des utilisateurs CSV")
+    parser.add_argument("file", help="Chemin du fichier CSV des utilisateurs")
+    parser.add_argument("login", help="Nom d'utilisateur")
+    parser.add_argument("--email", help="Adresse email")
+    parser.add_argument("--gecos", help="Nom complet ou description")
+    args = parser.parse_args()
+
+    users = load_users(args.file)
+
+    if args.login in users:
+        print(f"🔄 Utilisateur '{args.login}' trouvé. Mise à jour…")
+        user = users[args.login]
+        if args.email:
+            user['email'] = args.email
+        if args.gecos:
+            user['gecos'] = args.gecos
+        print("🔐 Modification du mot de passe :")
+        user['password_hash'] = prompt_password()
+    else:
+        print(f"➕ Création de l'utilisateur '{args.login}'")
+        user = {
+            'login': args.login,
+            'email': args.email or '',
+            'gecos': args.gecos or '',
+            'password_hash': prompt_password()
+        }
+        users[args.login] = user
+
+    save_users(args.file, users)
+    print("✅ Fichier mis à jour :", args.file)
+
+if __name__ == "__main__":
+    main()
+
