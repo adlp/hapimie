@@ -454,6 +454,7 @@ async def get_queue(queue:str = None):
     if queue is not None:
         hero={'action':'QueueStatus','Queue':queue}
 
+    statusConverter=['Unknown','Not Inuse','Inuse','Busy','Invalid','Unavailable','Ringing','Ringinuse','Onhold']
     allm=await action(hero)
     for bloc in allm:
         quenom=bloc['Queue']
@@ -488,6 +489,7 @@ async def get_queue(queue:str = None):
             del(ret[quenom]["QueueMember"][phone]['Event'])
             del(ret[quenom]["QueueMember"][phone]['Queue'])
             del(ret[quenom]["QueueMember"][phone]['Name'])
+            ret[quenom]["QueueMember"][phone]['_Status']=statusConverter[int(ret[quenom]["QueueMember"][phone]['Status'])]
     return(ret)
 
 
