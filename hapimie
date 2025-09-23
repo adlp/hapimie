@@ -11,6 +11,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 
+from fastapi.security import OAuth2PasswordRequestForm
+from jose import jwt, JWTError
+from passlib.context import CryptContext
+from datetime import datetime, timedelta
+import csv, httpx
+
 from panoramisk.manager import Manager
 
 import asyncio
@@ -22,21 +28,17 @@ import os,argparse,sys,configparser
 app = FastAPI(
     title="Hapimie",
     description="Happy l'api amie de l'AMI",
-    version="0.0.2",
+    version="0.0.3",
     docs_url="/docs",      # URL de Swagger
     redoc_url="/redoc",    # URL de Redoc
     openapi_url="/openapi.json"  # Spécification OpenAPI
     )
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 
 # Montage des fichiers statiques et templates
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
-
-# Utilisateurs autorisés TODO a compltement refaire
-USERS = {
-    "toto": "Hello Toto",
-    "titi": "Tu as les cheveux violet Titi"
-}
 
 parser = argparse.ArgumentParser(
     description="Happy l'api amie de l'AMI"
@@ -74,11 +76,18 @@ cfg['AMI_USER']= "asterisk"
 cfg['AMI_PASS']= "Sangoku"
 cfg['MAX_RETRIES']= 3
 cfg['RETRY_DELAY']= 3  # secondes
+cfg['SECRET_KEY']= "supersecretkey"
+cfg['ALGORITHM']= "HS256"
+cfg['TOKEN_EXPIRY_HOURS']= 2
+cfg['AUTHENTIK_ENABLED']= False
+cfg['AUTHENTIK_TOKEN_URL']= "https://authentik.example.com/application/o/token/"
+cfg['AUTHENTIK_CLIENT_ID']= "your-client-id"
+cfg['AUTHENTIK_CLIENT_SECRET']= "your-client-secret"
 for elem in cfg.keys():
     if elem not in config[args.name]:
         continue
     cfg[elem]=config[args.name][elem]
-for elem in ['API_PORT','AMI_PORT','MAX_RETRIES','RETRY_DELAY']:
+for elem in ['API_PORT','AMI_PORT','MAX_RETRIES','RETRY_DELAY','TOKEN_EXPIRY_HOURS']:
     i=cfg[elem]
     cfg[elem]=int(i)
 
@@ -89,22 +98,144 @@ for elem in ['API_PORT','AMI_PORT','MAX_RETRIES','RETRY_DELAY']:
 ###         return user
 ###     raise HTTPException(status_code=401)
 
+# Load local users from CSV
+def load_local_users():
+    users = {}
+    with open("users.csv") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            users[row["login"]] = {
+                "password": row["password_hash"],
+                "email": row["email"],
+                "gecos": row["gecos"]
+            }
+    return users
+
+# Verify password
+def verify_password(plain, hashed):
+    return pwd_context.verify(plain, hashed)
+
+# Try local auth
+def try_local_auth(username, password):
+    users = load_local_users()
+    user = users.get(username)
+    if user and verify_password(password, user["password"]):
+        return {
+            "login": username,
+            "email": user["email"],
+            "gecos": user["gecos"],
+            "source": "local"
+        }
+
+@app.get("/logout")
+def logout(request: Request):
+    response = templates.TemplateResponse("logout.html", {"request": request})
+    response.delete_cookie("access_token")
+    return response
+
+
+# Try Authentik auth
+def try_authentik_auth(username, password):
+    if not cfg['AUTHENTIK_ENABLED']:
+        return None
+    data = {
+        "username": username,
+        "password": password,
+        "grant_type": "password",
+        "client_id": cfg['AUTHENTIK_CLIENT_ID'],
+        "client_secret": cfg['AUTHENTIK_CLIENT_SECRET']
+    }
+    r = httpx.post(cfg['AUTHENTIK_TOKEN_URL, data=data'])
+    if r.status_code == 200:
+        return {
+            "login": username,
+            "email": r.json().get("email", ""),
+            "gecos": r.json().get("name", username),
+            "source": "authentik"
+        }
+
+# Create JWT token
+def create_token(user):
+    payload = {
+        "sub": user["login"],
+        "email": user["email"],
+        "gecos": user["gecos"],
+        "source": user["source"],
+        "exp": datetime.utcnow() + timedelta(hours=2)
+    }
+    return jwt.encode(payload, cfg['SECRET_KEY'], algorithm=cfg['ALGORITHM'])
+
+# Dependency to inject login/gecos
+def get_auth_info(request: Request):
+    return {"login": request.state.login, "gecos": request.state.gecos}
+
+def get_user_from_cookie(request: Request):
+    token = request.cookies.get("access_token")
+    login = ""
+    gecos = ""
+    if token:
+        try:
+            payload = jwt.decode(token, cfg['SECRET_KEY'], algorithms=[cfg['ALGORITHM']])
+            login = payload.get("sub", "")
+            gecos = payload.get("gecos", "")
+        except JWTError:
+            pass
+    return {"login": login, "gecos": gecos}
+
 # Page d'accueil avec formulaire de login
-@app.get("/", response_class=HTMLResponse)
-def home(request: Request):
-    user = request.cookies.get("user")
-    if user in USERS:
-        return templates.TemplateResponse("welcome.html", {"request": request, "user": user})
+@app.get("/")
+def home(request: Request, user=Depends(get_user_from_cookie)):
+    return templates.TemplateResponse("welcome.html", {
+        "request": request,
+        "login": user["login"],
+        "gecos": user["gecos"]
+    })
+
+# Login route
+@app.get("/login")
+def login_page(request: Request, user=Depends(get_user_from_cookie)):
+    if len(user['login']):
+        return(RedirectResponse(url="/", status_code=302))
     return templates.TemplateResponse("login.html", {"request": request})
 
-# Traitement du formulaire
-@app.post("/login",include_in_schema=False)
-def login(response: Response, username: str = Form(...)):
-    if username in USERS:
-        response = RedirectResponse(url="/", status_code=302)
-        response.set_cookie(key="user", value=username, httponly=True)
-        return response
-    return RedirectResponse(url="/", status_code=302)
+@app.post("/login")
+def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
+    # Authentifie l'utilisateur ici (local ou Authentik)
+    user = try_local_auth(username, password) or try_authentik_auth(username, password)
+    if not user:
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "error": "Identifiants invalides"
+        })
+    token = create_token(user)
+    response = RedirectResponse(url="/", status_code=302)
+    response.set_cookie("access_token", token, httponly=True)
+    return response
+
+@app.get("/logout")
+def logout(request: Request):
+    response = templates.TemplateResponse("logout.html", {"request": request})
+    response.delete_cookie("access_token")
+    return response
+
+
+# Middleware to protect /api routes
+@app.middleware("http")
+async def protect_api_routes(request: Request, call_next):
+    if request.url.path.startswith("/api"):
+        token = request.cookies.get("access_token")  # ← à corriger ici
+        login = ""
+        gecos = ""
+        if token:
+            try:
+                payload = jwt.decode(token, cfg['SECRET_KEY'], algorithms=[cfg['ALGORITHM']])
+                login = payload.get("sub", "")
+                gecos = payload.get("gecos", "")
+            except JWTError:
+                pass
+        request.state.login = login
+        request.state.gecos = gecos
+    return await call_next(request)
 
 @app.get("/secret",response_class=HTMLResponse)
 def secret_page(request: Request):
@@ -112,17 +243,6 @@ def secret_page(request: Request):
     if user not in USERS:
         return templates.TemplateResponse("unauthorized.html", {"request": request})
     return templates.TemplateResponse("secret.html", {"request": request, "user": user})
-
-@app.get("/logout", response_class=HTMLResponse)
-def logout_page(request: Request):
-    user = request.cookies.get("user")
-    return templates.TemplateResponse("logout.html", {"request": request, "user": user})
-
-@app.post("/logout")
-def logout(response: Response):
-    response = RedirectResponse(url="/", status_code=302)
-    response.delete_cookie("user")
-    return response
 
 ##########################################################################################
 # === AMI Manager ===
@@ -229,19 +349,21 @@ def startup():
     print("Connexion a l'AMI")
     manager.connect()
 
-@app.get("/close", response_class=HTMLResponse,include_in_schema=False)
-def close(request: Request):
-    manager.close()
-    user = request.cookies.get("user")
-    return templates.TemplateResponse("welcome.html", {"request": request, "user": user})
+#@app.get("/close", response_class=HTMLResponse,include_in_schema=False)
+#def close(request: Request):
+#    manager.close()
+#    user = request.cookies.get("user")
+#    return templates.TemplateResponse("welcome.html", {"request": request, "user": user})
 
 @app.get("/json", response_class=HTMLResponse)
 @app.get("/json/", response_class=HTMLResponse)
 @app.get("/json/{nom}", response_class=HTMLResponse)
-def json_view(request: Request, nom: str = None):
+def json_view(request: Request, user=Depends(get_user_from_cookie),nom: str = None):
     return templates.TemplateResponse("json.html", {
         "request": request,
-        "command_name": nom
+        "command_name": nom,
+        "login": user["login"],
+        "gecos": user["gecos"]
     })
 
 @app.get("/help", response_class=HTMLResponse)
@@ -276,24 +398,30 @@ async def get_help_stx(command: str = None):
         
     return ( ret )
 @app.post(cfg['API_PATH']+"/help-exec")
-async def help_exec(request: Request):
+async def help_exec(request: Request,user=Depends(get_user_from_cookie),nom: str = None):
     form = await request.form()
     data = dict(form)
     data["Action"] = form.get("Action")
 
-    # Simuler une réponse API
-    #return({'retour': data})
-    pprint(data)
-    ret=await action(data)
-    pprint(ret)
-    pprint(type(ret))
+    if len(user['login']):
+        pprint(data)
+        ret=await action(data)
+        pprint(ret)
+        pprint(type(ret))
 
-    response = {
-        "Response": "Success",
-        "Message": f"Commande {data['Action']} exécutée",
-        "Data": data,
-        'Retour': ret
-    }
+        response = {
+            "Response": "Success",
+            "Message": f"Commande {data['Action']} exécutée",
+            "Data": data,
+            'Retour': ret
+        }
+    else:
+        response = {
+            "Response": "Failure",
+            "Message": f"Non loggué ",
+            "Data": data,
+            'Retour': {}
+        }
 
     return(response)
 
@@ -349,8 +477,6 @@ async def get_help(command: str = None):
         hero = {"Action": "Command","command": f"manager show command {command}"}
     return ( await action(hero))
 
-
-
 def trichan(allChan):
     ret={}
     ret['Channels']={}
@@ -395,18 +521,23 @@ def trichan(allChan):
 
 @declare_path(app,"get", f"{cfg['API_PATH']}/status")
 #async def get_status(user=Depends(get_current_user)):
-async def get_status():
+async def get_status(auth=Depends(get_auth_info)):
     """
     Renvoie le status.... hmmmm ca ressemble a un coreshowchannel
     """
+    if not auth['login']:
+        return({ "Channels": {}, "Phones": {}, "Caller": {} })
+    pprint(auth)
     hero = {'Action':"Status","AllVariables":"True"}
     return(trichan(await action(hero)))
 
 @declare_path(app,"post",cfg['API_PATH']+"/HangUp")
-async def hangup(request: Request):
+async def hangup(request: Request,auth=Depends(get_auth_info)):
     """
     Permet de raccrocher le channel en cours
     """
+    if not auth['login']:
+        raise HTTPException(status_code=403)
     data= await request.json()
     Channel=data.get("channel_id")
     if Channel is None:
@@ -415,42 +546,49 @@ async def hangup(request: Request):
     return(await action(hero))
 
 @app.get("/ligne", response_class=HTMLResponse)
-def ligne_view(request: Request):
-    user = request.cookies.get("user")
+def ligne_view(request: Request, user=Depends(get_user_from_cookie)):
+#def ligne_view(request: Request):
+    #user = request.cookies.get("user")
     refresh_interval = 5000  # en millisecondes
     return templates.TemplateResponse("ligne.html", {
         "request": request,
-        "user": user,
+        "login": user["login"],
+        "gecos": user["gecos"],
         "refresh_interval": refresh_interval
     })
 
-@declare_path(app,"get", f"{cfg['API_PATH']}/coreshowchannels")
-async def get_coreshowchannels():
-    """
-    Affiche les channels en cours
-    """
-    hero="CoreShowChannels"
-    return(trichan(await action(hero)))
+#@declare_path(app,"get", f"{cfg['API_PATH']}/coreshowchannels")
+#async def get_coreshowchannels():
+#    """
+#    Affiche les channels en cours
+#    """
+#    hero="CoreShowChannels"
+#    return(trichan(await action(hero)))
 
 @app.get("/queue", response_class=HTMLResponse)
-async def queue(request: Request):
+async def queue(request: Request, user=Depends(get_user_from_cookie)):
     """
     Affichage des queues
     """
     refresh_interval = 5000  # en millisecondes
     return templates.TemplateResponse("queue.html", {
         "request": request,
-        "refresh_interval": refresh_interval
+        "refresh_interval": refresh_interval,
+        "login": user["login"],
+        "gecos": user["gecos"]
     })
 @declare_path(app, "get", f"{cfg['API_PATH']}/queue")
 @declare_path(app, "get", f"{cfg['API_PATH']}/queue/",include_in_schema=False)
 @declare_path(app, "get", cfg['API_PATH']+"/queue/{queue}")
-async def get_queue(queue:str = None):
+async def get_queue(user=Depends(get_user_from_cookie),queue:str = None):
     """
     Affiche le retour combiné de queuestatus et queusummary
     """
     ret={}
     hero='QueueStatus'
+    if len(user['login'])==0:
+        queue="santeol-poc"
+
     if queue is not None:
         hero={'action':'QueueStatus','Queue':queue}
 
@@ -494,61 +632,77 @@ async def get_queue(queue:str = None):
 
 
 @app.get("/dbview", response_class=HTMLResponse)
-async def dbview(request: Request):
+async def dbview(request: Request, user=Depends(get_user_from_cookie)):
     """
     Affichage pour lecture, modification et suppression d'enregistrement dans la DB d'Asterisk
     """
     return templates.TemplateResponse("dbview.html", {
-        "request": request
+        "request": request,
+        "login": user["login"],
+        "gecos": user["gecos"]
     })
 
-#INFO:     127.0.0.1:39512 - "POST /api/dbDel HTTP/1.1" 404 Not Found
-#INFO:     127.0.0.1:39512 - "POST /api/dbPut HTTP/1.1" 404 Not Found
-
 @app.post(cfg['API_PATH']+"/dbPut")
-async def db_put(request: Request):
+async def db_put(request: Request,user=Depends(get_user_from_cookie)):
     form = await request.form()
     data = dict(form)
     data["Action"] = form.get("Action")
 
-    pprint(data)
     family, key = data['Attribut'].split("/", 1)
     hero={'Action':'DbPut','family':family,'key':key,'val':data['Val']}
-    ret=await action(hero)
+    if len(user['login']):
+        ret=await action(hero)
 
-    response = {
-        "Response": "Success",
-        "Message": f"Commande {data['Action']} exécutée",
-        "Data": data,
-        "Action": hero,
-        'Retour': ret
-    }
+        response = {
+            "Response": "Success",
+            "Message": f"Commande {data['Action']} exécutée",
+            "Data": data,
+            "Action": hero,
+            'Retour': ret
+        }
+    else:
+        response = {
+            "Response": "Failure",
+            "Message": f"No authentification",
+            "Data": data,
+            "Action": hero,
+            'Retour': {}
+        }
 
     return(response)
 
 @app.post(cfg['API_PATH']+"/dbDel")
-async def db_del(request: Request):
+async def db_del(request: Request,user=Depends(get_user_from_cookie)):
     form = await request.form()
     data = dict(form)
     data["Action"] = form.get("Action")
 
-    pprint(data)
     family, key = data['Attribut'].split("/", 1)
     hero={'Action':'DbDel','family':family,'key':key}
-    #ret=await action(hero)
 
-    response = {
-        "Response": "Success",
-        "Message": f"Commande {data['Action']} exécutée",
-        "Data": data,
-        "Action": hero,
-    #    'Retour': ret
-    }
+    if len(user['login']):
+        ret=await action(hero)
+
+        response = {
+            "Response": "Success",
+            "Message": f"Commande {data['Action']} exécutée",
+            "Data": data,
+            "Action": hero,
+            'Retour': ret
+        }
+    else:
+        response = {
+            "Response": "Failure",
+            "Message": "No authentification",
+            "Data": data,
+            "Action": hero,
+            'Retour': {}
+        }
 
     return(response)
 
 @declare_path(app,"get", f"{cfg['API_PATH']}/databaseshow")
-async def get_databaseshow():
+async def get_databaseshow(user=Depends(get_user_from_cookie)):
     """
     Equivalant de "database show" dans la CLI avec suppression de familles
     Familles supprimées : 
@@ -557,6 +711,9 @@ async def get_databaseshow():
         - /CustomPresence/
         - /CustomDevstate/
     """
+    if len(user['login']) == 0:
+        return({})
+
     hero = {"Action": "Command","command": "database show"}
     resp=await action(hero)
     ret={}
@@ -577,20 +734,25 @@ async def get_databaseshow():
     return(ret)
 
 @app.get("/endpoints", response_class=HTMLResponse)
-def endpoints_view(request: Request, refresh: int = 5):
+def endpoints_view(request: Request, user=Depends(get_user_from_cookie), refresh: int = 5):
     """
     Affichage des endpoints
     """
     return templates.TemplateResponse("endpoints.html", {
         "request": request,
+        "login": user["login"],
+        "gecos": user["gecos"],
         "refresh_interval": refresh * 1000  # en millisecondes pour JS
     })
 
 @declare_path(app, "get", f"{cfg['API_PATH']}/endpoints")
-async def get_endpoints():
+async def get_endpoints(user=Depends(get_user_from_cookie)):
     """
     Affiche tout les endpoints iax/pjsip
     """
+    if len(user['login']) == 0:
+        return({})
+
     ret={}
     hero="PJSIPShowEndpoints"
     allend=await action(hero)
