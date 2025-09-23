@@ -380,6 +380,10 @@ def trichan(allChan):
         if 'Variable' in call.keys():
             ret['Channels'][call['Channel']]['Variables']={}
             for ligne in call['Variable']:
+                if '=' not in ligne:
+                    print(f'[ERR][/api/status] Erreure Analyse {ligne}')
+                    pprint(allChan)
+                    continue
                 clef,val=ligne.split('=',1)
                 ret['Channels'][call['Channel']]['Variables'][clef]=val
 
