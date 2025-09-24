@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
-from time import time
+from time import time, sleep
 import csv, httpx
 try:
     from jose import jwt, JWTError
@@ -288,6 +288,9 @@ manager = Manager(
     forgetable_actions=('login',)
     )
 
+trackeurAMI={}
+trackeurAMI['Originate']={}
+
 async def wait_for_protocol():
     """
     Attend que la connexion soit prête
@@ -298,6 +301,33 @@ async def wait_for_protocol():
         print("Reconnexion a l'AMI")
         await asyncio.sleep(0.1)
     raise RuntimeError("Connexion AMI non établie")
+
+
+# Fonction de gestion d'événement
+def on_event_OriginateResponse(manager,event):
+
+    #if isinstance(event.Uniqueid, str) and event.Uniqueid.startswith('Hapimie-') and event.event not in ['VarSet','Newexten']:
+    #    print(f"Événement : {event.event} LOOK")
+    #    print(trackeurAMI)
+    #    print(event)
+
+    if event.event == "Hangup" and isinstance(event.Uniqueid, str) and event.Uniqueid in trackeurAMI['Originate']:
+        print(f"Événement : {event.event} END")
+        del(trackeurAMI['Originate'][event.Uniqueid])
+
+    if event.event == 'Newchannel' and isinstance(event.Uniqueid, str) and event.Uniqueid in trackeurAMI['Originate']:
+        print(f"Événement : {event.event} FOUNDING")
+        trackeurAMI['Originate'][event.Uniqueid]['Channel']=event.Channel
+
+    #if event.Uniqueid in trackeurAMI['Originate'].keys():
+    #    print(f"Événement : {event.event}")
+    #    print(event)
+        
+    if event.event not in ['TestEvent','FullyBooted','SuccessfulAuth','VarSet'] and 1 == 2:
+        print(f"Événement : {event.event}")
+        print(event)
+        if event.name == 'OriginateResponse':
+            print("Channel ID :", event.get('Channel'))
 
 async def action(param=None):
     """
@@ -329,6 +359,8 @@ async def action(param=None):
                 print(f"⏳ Nouvelle tentative dans {cfg['RETRY_DELAY']} secondes...")
                 manager.close()
                 await asyncio.sleep(cfg['RETRY_DELAY']/2)
+                #manager.register_event('OriginateResponse', on_event_OriginateResponse)
+                manager.register_event('*', on_event_OriginateResponse)
                 manager.connect()
                 await asyncio.sleep(cfg['RETRY_DELAY']/2)
             else:
@@ -381,6 +413,8 @@ def declare_path(app, method: str, path: str, *, summary: str = None, include_in
 @app.on_event("startup")
 def startup():
     print("Connexion a l'AMI")
+    #manager.register_event('OriginateResponse', on_event_OriginateResponse)
+    manager.register_event('*', on_event_OriginateResponse)
     manager.connect()
 
 #@app.get("/close", response_class=HTMLResponse,include_in_schema=False)
@@ -885,6 +919,56 @@ async def get_endpoints(user=Depends(get_user_from_cookie)):
             ret[ide]['Full']=onened
         tocache('endpoints',1)
     return(ret)
+
+@app.get("/dial", response_class=HTMLResponse)
+async def dial_page(request: Request, login=Depends(get_user_from_cookie)):
+    return templates.TemplateResponse("dial.html", {
+        "request": request,
+        "login": login['login']
+    })
+
+@declare_path(app, "get", f"{cfg['API_PATH']}/myphones")
+async def get_myphones(user=Depends(get_user_from_cookie)):
+    # Exemple statique — à remplacer par une vraie source
+    if len(user['login']) == 0:
+        return([])
+
+    return ["10012", "1002", "_"]
+
+declare_path(app,"get", f"{cfg['API_PATH']}/trackeur")
+async def showtrack(request: Request, user=Depends(get_user_from_cookie)):
+    data = await request.json()
+    if len(user['login']) == 0:
+        return({})
+    return(trackeurAMI)
+
+#@app.post("/api/dial")
+@declare_path(app, "post", f"{cfg['API_PATH']}/dial")
+async def dial_api(request: Request, user=Depends(get_user_from_cookie)):
+    data = await request.json()
+    appellant = data.get("appellant")
+    numero = data.get("numero")
+    if len(user['login']) == 0:
+        return {"status": "KO", "login": user['login'], "appellant": appellant, "numero": numero}
+    ti=f'{appellant}-{numero}'
+    if ti in trackeurAMI['Originate'].keys():
+        print("Oulla c'est le dawa je ne sais pas encore gerer les bis,alors je raccrocerais l'autre et je relancerais")
+        print(f"Va falloire couper ca : {trackeurAMI['Originate'][ti]['Channel']}")
+    ti=f'Hapimie-{appellant}-{numero}-{time()}'
+    trackeurAMI['Originate'][ti]={}
+    hero = {'Action': 'Originate','Channel': f'Local/{appellant}@internal', 'Exten': numero, 'Context': 'internal', 'Priority': 1, 'CallerId':f'Mon ami {appellant}', 'Async':'false','ChannelId': ti }
+    ret=await action(hero)
+    pprint(ret)
+    
+    sleep(2)
+    print("show nous le trackeur impitoyable")
+    print(trackeurAMI['Originate'][ti])
+    if ti in trackeurAMI['Originate'].keys():
+        cha=trackeurAMI['Originate'][ti]
+
+    return {"status": ret['Response'], "login": user['login'], "appellant": appellant, "numero": numero, 'full':ret, 'channel': cha}
+
+
 
 
 ##########################################################################################
