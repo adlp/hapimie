@@ -91,6 +91,17 @@ for elem in ['API_PORT','AMI_PORT','MAX_RETRIES','RETRY_DELAY','TOKEN_EXPIRY_HOU
     i=cfg[elem]
     cfg[elem]=int(i)
 
+
+from datetime import datetime
+
+def format_epoch(epoch=int(datetime.now().timestamp())):
+    # Si le timestamp est en millisecondes, on le convertit en secondes
+    if epoch > 1e12:
+        epoch = epoch / 1000
+
+    dt = datetime.fromtimestamp(epoch)
+    return dt.strftime("%d/%m/%Y %H:%M:%S")
+
 ### # Vérification du cookie
 ### def get_current_user(request: Request):
 ###     user = request.cookies.get("user")
@@ -628,6 +639,16 @@ async def get_queue(user=Depends(get_user_from_cookie),queue:str = None):
             del(ret[quenom]["QueueMember"][phone]['Queue'])
             del(ret[quenom]["QueueMember"][phone]['Name'])
             ret[quenom]["QueueMember"][phone]['_Status']=statusConverter[int(ret[quenom]["QueueMember"][phone]['Status'])]
+            if ret[quenom]["QueueMember"][phone]['LastCall'] != "0":
+                tmp=ret[quenom]["QueueMember"][phone]['LastCall']
+                ret[quenom]["QueueMember"][phone]['LastCall']=format_epoch(int(tmp))
+            else:
+                ret[quenom]["QueueMember"][phone]['LastCall']="None"
+            if ret[quenom]["QueueMember"][phone]['LoginTime'] != "0":
+                tmp=ret[quenom]["QueueMember"][phone]['LoginTime']
+                ret[quenom]["QueueMember"][phone]['LoginTime']=format_epoch(int(tmp))
+            else:
+                ret[quenom]["QueueMember"][phone]['LoginTime']="None"
     return(ret)
 
 
