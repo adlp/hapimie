@@ -598,7 +598,7 @@ async def get_queue(user=Depends(get_user_from_cookie),queue:str = None):
     ret={}
     hero='QueueStatus'
     if len(user['login'])==0:
-        queue="santeol-poc"
+        queue="poc"
 
     if queue is not None:
         hero={'action':'QueueStatus','Queue':queue}
