@@ -12,11 +12,16 @@ from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 
 from fastapi.security import OAuth2PasswordRequestForm
-from jose import jwt, JWTError
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from time import time
 import csv, httpx
+try:
+    from jose import jwt, JWTError
+except ImportError:
+    from jwt import encode as jwt_encode, decode as jwt_decode
+    from jwt import InvalidTokenError as JWTError
+    import jwt
 
 from panoramisk.manager import Manager
 
@@ -842,7 +847,9 @@ async def get_endpoints(user=Depends(get_user_from_cookie)):
             ret[ide]={}
             ret[ide]['ObjectName']=onened["ObjectName"]
             ret[ide]['Type']="PJSIP"
-            ret[ide]['Contacts']=onened['Contacts']
+            ret[ide]['Contacts']=''
+            if 'Contacts' in onened.keys():
+                ret[ide]['Contacts']=onened['Contacts']
             ret[ide]['Up']=True
             if onened['DeviceState']=="Unavailable":
                 ret[ide]['Up']=False
