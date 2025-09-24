@@ -15,6 +15,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
+from time import time
 import csv, httpx
 
 from panoramisk.manager import Manager
@@ -91,8 +92,25 @@ for elem in ['API_PORT','AMI_PORT','MAX_RETRIES','RETRY_DELAY','TOKEN_EXPIRY_HOU
     i=cfg[elem]
     cfg[elem]=int(i)
 
+cache={}
 
-from datetime import datetime
+def fromcache(clef,defaultValue=None,maxtime=None):
+    if clef not in cache.keys():
+        return(defaultValue)
+    if maxtime is None:
+        maxtime= cache[clef]['timemax']
+    if int(time())-cache[clef]['timeput'] < maxtime:
+        print(f'Read {clef} from cache')
+        return(cache[clef]['data'])
+    else:
+        return(defaultValue)
+
+def tocache(clef,data,maxtime=2):
+    cache[clef]={}
+    cache[clef]['data']=data
+    cache[clef]['timeput']=int(time())
+    cache[clef]['timemax']=maxtime
+
 
 def format_epoch(epoch=int(datetime.now().timestamp())):
     # Si le timestamp est en millisecondes, on le convertit en secondes
@@ -377,6 +395,10 @@ def json_view(request: Request, user=Depends(get_user_from_cookie),nom: str = No
         "gecos": user["gecos"]
     })
 
+@app.get(cfg['API_PATH']+"/cache")
+async def show_cache(request: Request,user=Depends(get_user_from_cookie),nom: str = None):
+    return(cache)
+
 @app.get("/help", response_class=HTMLResponse)
 def show_help(request: Request):
     return templates.TemplateResponse("help.html", {"request": request})
@@ -395,7 +417,11 @@ async def get_help_stx(command: str = None):
     if command is None:
         return{}
     hero = {"Action": "Command","command": f"manager show command {command}"}
-    ret = {}
+
+    ret= fromcache('stx '+hero['command'],{})
+    if(len(ret)):
+        return(ret)
+
     doc = await action(hero)
     for ligne in doc['Output']:
         if len(ligne)==0:
@@ -406,8 +432,10 @@ async def get_help_stx(command: str = None):
         if neli[0] in [ "Syntax","Action","ActionID" ]:
             continue
         ret[neli[0]]=neli[1]
-        
+ 
+    tocache('stx '+hero['command'],ret,300)
     return ( ret )
+
 @app.post(cfg['API_PATH']+"/help-exec")
 async def help_exec(request: Request,user=Depends(get_user_from_cookie),nom: str = None):
     form = await request.form()
@@ -472,9 +500,11 @@ async def get_help(command: str = None):
     #    raise HTTPException(status_code=403, detail="Permission refusée")
     #response = await manager.send_action({"Action": "Command","command": f"manager show command {command}"})
 
-
     if command is None:
         hero = {"Action": "Command","command": "manager show commands"}
+        ret= fromcache(hero['command'],None)
+        if ret is not None:
+            return(ret)
         ret=await action(hero)
         if "Output" in ret.keys() and isinstance(ret["Output"], list):
             ret['Commands']={}
@@ -483,10 +513,16 @@ async def get_help(command: str = None):
                 if cmd not in ['Action','------']:
                     ret['Commands'][cmd]=desc
             del(ret["Output"])
+        tocache(hero['command'],ret,300)
         return(ret)
     else:
         hero = {"Action": "Command","command": f"manager show command {command}"}
-    return ( await action(hero))
+        ret= fromcache(hero['command'],None)
+        if ret is not None:
+            return(ret)
+        ret=await action(hero)
+        tocache(hero['command'],ret,300)
+        return(ret)
 
 def trichan(allChan):
     ret={}
@@ -516,17 +552,21 @@ def trichan(allChan):
 
         if 'Variable' in call.keys():
             ret['Channels'][call['Channel']]['Variables']={}
-            for ligne in call['Variable']:
-                if '=' not in ligne:
-                    print(f'[ERR][/api/status] Erreure Analyse {ligne}')
-                    pprint(allChan)
-                    continue
-                clef,val=ligne.split('=',1)
+            if isinstance(call['Variable'],str):
+                clef,val=call['Variable'].split('=',1)
                 ret['Channels'][call['Channel']]['Variables'][clef]=val
+            else:
+                for ligne in call['Variable']:
+                    if '=' not in ligne:
+                        print(f'[ERR][/api/status] Erreure Analyse {ligne}')
+                        pprint(allChan)
+                        continue
+                    clef,val=ligne.split('=',1)
+                    ret['Channels'][call['Channel']]['Variables'][clef]=val
 
     if len(ret['Caller']):
         for call in allChan:
-            if ret['Channels'][call['Channel']]['_Call']=='_Receiving':
+            if '_Linkedid' in call and ret['Channels'][call['Channel']]['_Call']=='_Receiving':
                 ret['Caller'][call['_Linkedid']].append(call['Channel'])
     return(ret)
 
@@ -538,9 +578,12 @@ async def get_status(auth=Depends(get_auth_info)):
     """
     if not auth['login']:
         return({ "Channels": {}, "Phones": {}, "Caller": {} })
-    pprint(auth)
     hero = {'Action':"Status","AllVariables":"True"}
-    return(trichan(await action(hero)))
+    ret= fromcache('status',None)
+    if ret is None:
+        ret=trichan(await action(hero))
+        tocache('status',ret,1)
+    return(ret)
 
 @declare_path(app,"post",cfg['API_PATH']+"/HangUp")
 async def hangup(request: Request,auth=Depends(get_auth_info)):
@@ -595,61 +638,70 @@ async def get_queue(user=Depends(get_user_from_cookie),queue:str = None):
     """
     Affiche le retour combiné de queuestatus et queusummary
     """
-    ret={}
-    hero='QueueStatus'
+
+    queueRet=fromcache('Queues',{})
+    if len(queueRet) == 0:
+        statusConverter=['Unknown','Not Inuse','Inuse','Busy','Invalid','Unavailable','Ringing','Ringinuse','Onhold']
+        hero='QueueStatus'
+        allm=await action(hero)
+        for bloc in allm:
+            quenom=bloc['Queue']
+            if quenom not in queueRet.keys():
+                queueRet[quenom]={}
+                queueRet[quenom]["QueueEntry"]={}
+                queueRet[quenom]["QueueMember"]={}
+    
+            if bloc['Event'] == "QueueParams":
+                queueRet[quenom]['QueueParams']=bloc
+            elif bloc['Event'] == "QueueEntry":
+                queueRet[quenom]["QueueEntry"][bloc['Channel']]=bloc
+            elif bloc['Event'] == "QueueMember":
+                queueRet[quenom]["QueueMember"][bloc["Name"]]=bloc
+            elif allmembers:
+                queueRet[quenom]["FallDown"].append(bloc)
+    
+        hero='QueueSummary'
+        allm=await action(hero)
+        for bloc in allm:
+            quenom=bloc['Queue']
+            #queueRet[quenom]['QueueParams']["LoggedIn"]=bloc
+            queueRet[quenom]['QueueParams']["LoggedIn"]=bloc['LoggedIn']
+            queueRet[quenom]['QueueParams']["Available"]=bloc['Available']
+            queueRet[quenom]['QueueParams']["Callers"]=bloc['Callers']
+            queueRet[quenom]['QueueParams']["LongestHoldTime"]=bloc['LongestHoldTime']
+            queueRet[quenom]['QueueParams']["content"]+='/'+bloc['content']
+            del(queueRet[quenom]['QueueParams']['Event'])
+            for phone in queueRet[quenom]["QueueMember"]:
+                del(queueRet[quenom]["QueueMember"][phone]['Event'])
+                del(queueRet[quenom]["QueueMember"][phone]['Queue'])
+                del(queueRet[quenom]["QueueMember"][phone]['Name'])
+                queueRet[quenom]["QueueMember"][phone]['_Status']=statusConverter[int(queueRet[quenom]["QueueMember"][phone]['Status'])]
+                if queueRet[quenom]["QueueMember"][phone]['Paused']=="1":
+                    queueRet[quenom]["QueueMember"][phone]['_Status']+="/Pause"
+                if queueRet[quenom]["QueueMember"][phone]['LastCall'] != "0":
+                    tmp=queueRet[quenom]["QueueMember"][phone]['LastCall']
+                    queueRet[quenom]["QueueMember"][phone]['LastCall']=format_epoch(int(tmp))
+                else:
+                    queueRet[quenom]["QueueMember"][phone]['LastCall']="None"
+                if queueRet[quenom]["QueueMember"][phone]['LastPause'] != "0":
+                    tmp=queueRet[quenom]["QueueMember"][phone]['LastPause']
+                    queueRet[quenom]["QueueMember"][phone]['LastPause']=format_epoch(int(tmp))
+                else:
+                    queueRet[quenom]["QueueMember"][phone]['LastPause']="None"
+                if queueRet[quenom]["QueueMember"][phone]['LoginTime'] != "0":
+                    tmp=queueRet[quenom]["QueueMember"][phone]['LoginTime']
+                    queueRet[quenom]["QueueMember"][phone]['LoginTime']=format_epoch(int(tmp))
+                else:
+                    queueRet[quenom]["QueueMember"][phone]['LoginTime']="None"
+        tocache('Queues',queueRet)
+
     if len(user['login'])==0:
-        queue="poc"
-
+        queue="santeol-poc"
     if queue is not None:
-        hero={'action':'QueueStatus','Queue':queue}
+        return({queue: queueRet[queue]})
 
-    statusConverter=['Unknown','Not Inuse','Inuse','Busy','Invalid','Unavailable','Ringing','Ringinuse','Onhold']
-    allm=await action(hero)
-    for bloc in allm:
-        quenom=bloc['Queue']
-        if quenom not in ret.keys():
-            ret[quenom]={}
-            ret[quenom]["QueueEntry"]={}
-            ret[quenom]["QueueMember"]={}
+    return(queueRet)
 
-        if bloc['Event'] == "QueueParams":
-            ret[quenom]['QueueParams']=bloc
-        elif bloc['Event'] == "QueueEntry":
-            ret[quenom]["QueueEntry"][bloc['Channel']]=bloc
-        elif bloc['Event'] == "QueueMember":
-            ret[quenom]["QueueMember"][bloc["Name"]]=bloc
-        elif allmembers:
-            ret[quenom]["FallDown"].append(bloc)
-
-    hero='QueueSummary'
-    if queue is not None:
-        hero={'action':'QueueSummary','Queue':queue}
-    allm=await action(hero)
-    for bloc in allm:
-        quenom=bloc['Queue']
-        #ret[quenom]['QueueParams']["LoggedIn"]=bloc
-        ret[quenom]['QueueParams']["LoggedIn"]=bloc['LoggedIn']
-        ret[quenom]['QueueParams']["Available"]=bloc['Available']
-        ret[quenom]['QueueParams']["Callers"]=bloc['Callers']
-        ret[quenom]['QueueParams']["LongestHoldTime"]=bloc['LongestHoldTime']
-        ret[quenom]['QueueParams']["content"]+='/'+bloc['content']
-        del(ret[quenom]['QueueParams']['Event'])
-        for phone in ret[quenom]["QueueMember"]:
-            del(ret[quenom]["QueueMember"][phone]['Event'])
-            del(ret[quenom]["QueueMember"][phone]['Queue'])
-            del(ret[quenom]["QueueMember"][phone]['Name'])
-            ret[quenom]["QueueMember"][phone]['_Status']=statusConverter[int(ret[quenom]["QueueMember"][phone]['Status'])]
-            if ret[quenom]["QueueMember"][phone]['LastCall'] != "0":
-                tmp=ret[quenom]["QueueMember"][phone]['LastCall']
-                ret[quenom]["QueueMember"][phone]['LastCall']=format_epoch(int(tmp))
-            else:
-                ret[quenom]["QueueMember"][phone]['LastCall']="None"
-            if ret[quenom]["QueueMember"][phone]['LoginTime'] != "0":
-                tmp=ret[quenom]["QueueMember"][phone]['LoginTime']
-                ret[quenom]["QueueMember"][phone]['LoginTime']=format_epoch(int(tmp))
-            else:
-                ret[quenom]["QueueMember"][phone]['LoginTime']="None"
-    return(ret)
 
 
 @app.get("/dbview", response_class=HTMLResponse)
@@ -681,6 +733,7 @@ async def db_put(request: Request,user=Depends(get_user_from_cookie)):
             "Action": hero,
             'Retour': ret
         }
+        tocache('database',{},0.1)
     else:
         response = {
             "Response": "Failure",
@@ -711,6 +764,7 @@ async def db_del(request: Request,user=Depends(get_user_from_cookie)):
             "Action": hero,
             'Retour': ret
         }
+        tocache('database',{},0.1)
     else:
         response = {
             "Response": "Failure",
@@ -735,23 +789,26 @@ async def get_databaseshow(user=Depends(get_user_from_cookie)):
     if len(user['login']) == 0:
         return({})
 
-    hero = {"Action": "Command","command": "database show"}
-    resp=await action(hero)
-    ret={}
-    datas=resp['Output']
-    datas.pop()
-    for ligne in datas:
-        cmd,desc=decoupe_lexique(ligne)
-        if cmd.startswith('/subscription_persistence/'):
-            continue
-        elif cmd.startswith('/registrar/'):
-            continue
-        elif cmd.startswith('/CustomPresence/'):
-            continue
-        elif cmd.startswith('/CustomDevstate/'):
-            continue
-
-        ret[cmd[1:]]=desc[2:]
+    ret=fromcache('database',{})
+    if len(ret) == 0:
+        hero = {"Action": "Command","command": "database show"}
+        resp=await action(hero)
+        ret={}
+        datas=resp['Output']
+        datas.pop()
+        for ligne in datas:
+            cmd,desc=decoupe_lexique(ligne)
+            if cmd.startswith('/subscription_persistence/'):
+                continue
+            elif cmd.startswith('/registrar/'):
+                continue
+            elif cmd.startswith('/CustomPresence/'):
+                continue
+            elif cmd.startswith('/CustomDevstate/'):
+                continue
+    
+            ret[cmd[1:]]=desc[2:]
+        tocache('database',ret,1)
     return(ret)
 
 @app.get("/endpoints", response_class=HTMLResponse)
@@ -774,34 +831,52 @@ async def get_endpoints(user=Depends(get_user_from_cookie)):
     if len(user['login']) == 0:
         return({})
 
-    ret={}
-    hero="PJSIPShowEndpoints"
-    allend=await action(hero)
-    for onened in allend:
-        ide="PJSIP/"+onened["ObjectName"]
-        ret[ide]={}
-        ret[ide]['ObjectName']=onened["ObjectName"]
-        ret[ide]['Type']="PJSIP"
-        ret[ide]['Contacts']=onened['Contacts']
-        ret[ide]['Up']=True
-        if onened['DeviceState']=="Unavailable":
-            ret[ide]['Up']=False
-        ret[ide]['Full']=onened
-        
-    hero="IAXpeerlist"
-    allend=await action(hero)
-    for onened in allend:
-        ide="IAX2/"+onened["ObjectName"]
-        ret[ide]={}
-        ret[ide]['ObjectName']=onened["ObjectName"]
-        ret[ide]['Type']="IAX2"
-        if onened['IPaddress']=="(null)":
-            ret[ide]['Contacts']=onened['IPaddress']
-        ret[ide]['Up']=True
-        if onened['Status']=="UNKNOWN":
-            ret[ide]['Up']=False
-        ret[ide]['Full']=onened
-
+    ret=fromcache('endpoints',{})
+    if len(ret) == 0:
+        hero="PJSIPShowEndpoints"
+        allend=await action(hero)
+        varsip=fromcache(f"endpointssipvar",{})
+        noinitvarsip=len(varsip)
+        for onened in allend:
+            ide="PJSIP/"+onened["ObjectName"]
+            ret[ide]={}
+            ret[ide]['ObjectName']=onened["ObjectName"]
+            ret[ide]['Type']="PJSIP"
+            ret[ide]['Contacts']=onened['Contacts']
+            ret[ide]['Up']=True
+            if onened['DeviceState']=="Unavailable":
+                ret[ide]['Up']=False
+            if ide not in varsip:
+                hero={"Action":"PJSIPShowEndpoint","Endpoint":onened["ObjectName"]}
+                tmp=await action(hero)
+                if 'SetVar' in tmp[0].keys() and len(tmp[0]['SetVar']):
+                    noinitvarsip=0
+                    varsip[ide]={}
+                    varsip[ide]['Vars']={}
+                    for ligne in tmp[0]['SetVar'].split(','):
+                        k,v=ligne.split('=',1)
+                        varsip[ide]['Vars'][k]=v
+                else:
+                    varsip[ide]={}
+            ret[ide]['SetVar']=varsip[ide]
+            ret[ide]['Full']=onened
+            if not noinitvarsip:
+                tocache(f"endpointssipvar",varsip,600)
+            
+        hero="IAXpeerlist"
+        allend=await action(hero)
+        for onened in allend:
+            ide="IAX2/"+onened["ObjectName"]
+            ret[ide]={}
+            ret[ide]['ObjectName']=onened["ObjectName"]
+            ret[ide]['Type']="IAX2"
+            if onened['IPaddress']=="(null)":
+                ret[ide]['Contacts']=onened['IPaddress']
+            ret[ide]['Up']=True
+            if onened['Status']=="UNKNOWN":
+                ret[ide]['Up']=False
+            ret[ide]['Full']=onened
+        tocache('endpoints',1)
     return(ret)
 
 
