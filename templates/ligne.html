@@ -32,8 +32,8 @@
         const block = document.createElement("div");
         block.className = "caller-block";
 
-        const sourceLine = `<span class="channel-id" onclick="showPopup('${sourceId}')">${source._Phone} / ${caller}</span> ➜ `;
-        block.innerHTML = `<strong>${sourceLine}</strong> ${app} ➜`;
+        const sourceLine = `<span class="channel-id" onclick="showPopup('${sourceId}')">${source._Phone} / ${caller}</span> <a href="#" onclick="hangup('${sourceId}'); return false;">HangUP</a>`;
+        block.innerHTML = `<strong>${sourceLine}</strong>  ➜ ${app} ➜`;
 
         targetIds.forEach(targetId => {
           const target = channels[targetId];
