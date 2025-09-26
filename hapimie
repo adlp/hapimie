@@ -195,7 +195,7 @@ def create_token(user):
         "email": user["email"],
         "gecos": user["gecos"],
         "source": user["source"],
-        "exp": datetime.utcnow() + timedelta(hours=2)
+        "exp": datetime.utcnow() + timedelta(hours=cfg['TOKEN_EXPIRY_HOURS'])
     }
     return jwt.encode(payload, cfg['SECRET_KEY'], algorithm=cfg['ALGORITHM'])
 
