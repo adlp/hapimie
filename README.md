@@ -44,6 +44,8 @@ Merci de consulter le fichier [CONTRIBUTING.md](./CONTRIBUTING.md) (à créer) p
 ### 🧪 Tests
 J'voudrais bien... mais bon...
 
+=> Ajout d'un support sentry
+
 ### Configuration
   * Le fichier de configuration trouvera naturellement sa place là /usr/local/etc/hapimie.cfg, mais il peut etre specifié lors de l'appel d'hapimie, avec le parametre --cfgfile
 ```ini /usr/local/etc/hapimie.cfg
@@ -81,4 +83,7 @@ Mot de passe :
 Confirmer : 
 ✅ Fichier mis à jour : users.csv
 ```
+
+Dans le fichier de configuration une entrée SENTRY_DSN est maintenant disponible et permet de debugguer sur un serveur sentry. Si la configuration sentry est prise en compte le message "Sentry enabled" apparaitra
+
 

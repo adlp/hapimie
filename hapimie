@@ -89,6 +89,7 @@ cfg['AUTHENTIK_ENABLED']= False
 cfg['AUTHENTIK_TOKEN_URL']= "https://authentik.example.com/application/o/token/"
 cfg['AUTHENTIK_CLIENT_ID']= "your-client-id"
 cfg['AUTHENTIK_CLIENT_SECRET']= "your-client-secret"
+cfg['SENTRY_DSN']=""
 for elem in cfg.keys():
     if elem not in config[args.name]:
         continue
@@ -96,6 +97,17 @@ for elem in cfg.keys():
 for elem in ['API_PORT','AMI_PORT','MAX_RETRIES','RETRY_DELAY','TOKEN_EXPIRY_HOURS']:
     i=cfg[elem]
     cfg[elem]=int(i)
+
+if 'SENTRY_DSN' in cfg.keys() and len(cfg['SENTRY_DSN']):
+    print("Sentry Enabling")
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=cfg['SENTRY_DSN'],
+        # Add data like request headers and IP for users,
+        # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
+        send_default_pii=True,
+        )
 
 cache={}
 
