@@ -14,13 +14,6 @@ Une API open source accompagnée d'une interface web, conçue pour acceder simpl
 - API RESTful pour acceder a l'Asterisk Management Interface (AMI)
 - Interface web en HTML/CSS/JS
 
-## Installation
-
-```bash
-git clone https://github.com/adlp/hapimie.git
-cd hapimie
-```
-
 ## ⚖️ Licence
 
 Ce projet est distribué sous la licence **European Union Public Licence v1.2 (EUPL)**.
@@ -31,15 +24,12 @@ La licence est juridiquement reconnue dans tous les pays de l’Union européenn
 🔗 [Texte officiel de la licence (EUPL v1.2)](https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12)  
 📄 Voir le fichier [LICENSE](./LICENSE) pour plus d’informations.
 
+## Installation
 
-### 👤 Auteur
-Développé par Antoine DELAPORTE
-📧 Contact : hapiomie@baball.eu
-📅 Année : 2025
-🤝 Contributions : [CONTRIBUTING.md](./CONTRIBUTING.md)
-
-Les contributions sont les bienvenues !
-Merci de consulter le fichier [CONTRIBUTING.md](./CONTRIBUTING.md) (à créer) pour les règles de contribution.
+```bash
+git clone https://github.com/adlp/hapimie.git
+cd hapimie
+```
 
 ### 🧪 Tests
 J'voudrais bien... mais bon...
@@ -86,4 +76,12 @@ Confirmer :
 
 Dans le fichier de configuration une entrée SENTRY_DSN est maintenant disponible et permet de debugguer sur un serveur sentry. Si la configuration sentry est prise en compte le message "Sentry enabled" apparaitra
 
+### 👤 Auteur
+Développé par Antoine DELAPORTE
+📧 Contact : hapiomie@baball.eu
+📅 Année : 2025
+🤝 Contributions : [CONTRIBUTING.md](./CONTRIBUTING.md)
+
+Les contributions sont les bienvenues !
+Merci de consulter le fichier [CONTRIBUTING.md](./CONTRIBUTING.md) (à créer) pour les règles de contribution.
 
