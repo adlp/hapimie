@@ -54,6 +54,21 @@
     } catch (err) {
       document.getElementById("content").innerHTML = "<p>Erreur de chargement.</p>";
       console.error(err);
+      if (typeof Sentry !== "undefined") {
+        Sentry.withScope(function(scope) {
+          scope.setTag("section", "content-loader");
+          scope.setLevel("error");
+          scope.setExtra("message", err.message);
+          scope.setExtra("stack", err.stack);
+          scope.setExtra("timestamp", new Date().toISOString());
+          scope.setContext("custom_context", {
+            url: window.location.href,
+            userAgent: navigator.userAgent,
+            contentState: document.getElementById("content").innerHTML
+          });
+          Sentry.captureException(err);
+        });
+      }
     }
   }
 

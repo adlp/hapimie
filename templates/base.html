@@ -22,6 +22,29 @@
   </style>
 </head>
 <body>
+{% if sentry_dsn %}
+<script>
+  (function() {
+    // Sentry loader sans CDN externe
+    window.Sentry = {
+      init: function(config) {
+        this.config = config;
+        this.captureException = function(e) {
+          console.error("Sentry capture:", e);
+          // Tu peux ici envoyer l'erreur à ton backend ou à Sentry via fetch
+        };
+      }
+    };
+
+    Sentry.init({
+      dsn: "{{ sentry_dsn }}",
+      environment: "production",
+      release: "hapimie@...",
+      tags: { module: "frontend" }
+    });
+  })();
+</script>
+{% endif %}
   <div class="header">
     <div><a href="/">🏠 Accueil</a> <a href="/ligne">☎️ </a><a href="/queue">🐍</a><a href="/help">🔍 Help</a></div>
     <div style="text-align:right; margin-bottom:10px;">

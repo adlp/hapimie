@@ -175,7 +175,8 @@ def try_local_auth(username, password):
 
 @app.get("/logout")
 def logout(request: Request):
-    response = templates.TemplateResponse("logout.html", {"request": request})
+    htmlvars= {"request": request,"sentry_dsn": cfg.get("SENTRY_DSN")}
+    response = templates.TemplateResponse("logout.html", htmlvars)
     response.delete_cookie("access_token")
     return response
 
@@ -231,18 +232,20 @@ def get_user_from_cookie(request: Request):
 # Page d'accueil avec formulaire de login
 @app.get("/")
 def home(request: Request, user=Depends(get_user_from_cookie)):
-    return templates.TemplateResponse("welcome.html", {
-        "request": request,
+    htmlvars= {"request": request,
+        "sentry_dsn": cfg.get("SENTRY_DSN"),
         "login": user["login"],
-        "gecos": user["gecos"]
-    })
+        "gecos": user["gecos"],
+        }
+    return templates.TemplateResponse("welcome.html", htmlvars )
 
 # Login route
 @app.get("/login")
 def login_page(request: Request, user=Depends(get_user_from_cookie)):
+    htmlvars= {"request": request,"sentry_dsn": cfg.get("SENTRY_DSN")}
     if len(user['login']):
         return(RedirectResponse(url="/", status_code=302))
-    return templates.TemplateResponse("login.html", {"request": request})
+    return templates.TemplateResponse("login.html", htmlvars)
 
 @app.post("/login")
 def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
@@ -251,19 +254,13 @@ def login_submit(request: Request, username: str = Form(...), password: str = Fo
     if not user:
         return templates.TemplateResponse("login.html", {
             "request": request,
+            "sentry_dsn": cfg.get("SENTRY_DSN"),
             "error": "Identifiants invalides"
         })
     token = create_token(user)
     response = RedirectResponse(url="/", status_code=302)
     response.set_cookie("access_token", token, httponly=True)
     return response
-
-@app.get("/logout")
-def logout(request: Request):
-    response = templates.TemplateResponse("logout.html", {"request": request})
-    response.delete_cookie("access_token")
-    return response
-
 
 # Middleware to protect /api routes
 @app.middleware("http")
@@ -282,13 +279,6 @@ async def protect_api_routes(request: Request, call_next):
         request.state.login = login
         request.state.gecos = gecos
     return await call_next(request)
-
-@app.get("/secret",response_class=HTMLResponse)
-def secret_page(request: Request):
-    user = request.cookies.get("user")
-    if user not in USERS:
-        return templates.TemplateResponse("unauthorized.html", {"request": request})
-    return templates.TemplateResponse("secret.html", {"request": request, "user": user})
 
 ##########################################################################################
 # === AMI Manager ===
@@ -443,7 +433,8 @@ def json_view(request: Request, user=Depends(get_user_from_cookie),nom: str = No
         "request": request,
         "command_name": nom,
         "login": user["login"],
-        "gecos": user["gecos"]
+        "gecos": user["gecos"],
+        "sentry_dsn": cfg.get("SENTRY_DSN"),
     })
 
 @app.get(cfg['API_PATH']+"/cache")
@@ -452,12 +443,14 @@ async def show_cache(request: Request,user=Depends(get_user_from_cookie),nom: st
 
 @app.get("/help", response_class=HTMLResponse)
 def show_help(request: Request):
-    return templates.TemplateResponse("help.html", {"request": request})
+    htmlvars={"request": request,"sentry_dsn": cfg.get("SENTRY_DSN")}
+    return templates.TemplateResponse("help.html", htmlvars)
 @app.get("/help/{nom}", response_class=HTMLResponse)
 def show_help_detail(request: Request, nom: str):
     return templates.TemplateResponse("help-detail.html", {
         "request": request,
-        "help": nom
+        "help": nom,
+        "sentry_dsn": cfg.get("SENTRY_DSN"),
     })
 
 @declare_path(app, "get", cfg['API_PATH']+"/help-syntax/{command}")
@@ -659,6 +652,7 @@ def ligne_view(request: Request, user=Depends(get_user_from_cookie)):
         "request": request,
         "login": user["login"],
         "gecos": user["gecos"],
+        "sentry_dsn": cfg.get("SENTRY_DSN"),
         "refresh_interval": refresh_interval
     })
 
@@ -678,6 +672,7 @@ async def queue(request: Request, user=Depends(get_user_from_cookie)):
     refresh_interval = 5000  # en millisecondes
     return templates.TemplateResponse("queue.html", {
         "request": request,
+        "sentry_dsn": cfg.get("SENTRY_DSN"),
         "refresh_interval": refresh_interval,
         "login": user["login"],
         "gecos": user["gecos"]
@@ -763,6 +758,7 @@ async def dbview(request: Request, user=Depends(get_user_from_cookie)):
     return templates.TemplateResponse("dbview.html", {
         "request": request,
         "login": user["login"],
+        "sentry_dsn": cfg.get("SENTRY_DSN"),
         "gecos": user["gecos"]
     })
 
@@ -871,6 +867,7 @@ def endpoints_view(request: Request, user=Depends(get_user_from_cookie), refresh
         "request": request,
         "login": user["login"],
         "gecos": user["gecos"],
+        "sentry_dsn": cfg.get("SENTRY_DSN"),
         "refresh_interval": refresh * 1000  # en millisecondes pour JS
     })
 
@@ -936,6 +933,7 @@ async def get_endpoints(user=Depends(get_user_from_cookie)):
 async def dial_page(request: Request, login=Depends(get_user_from_cookie)):
     return templates.TemplateResponse("dial.html", {
         "request": request,
+        "sentry_dsn": cfg.get("SENTRY_DSN"),
         "login": login['login']
     })
 
