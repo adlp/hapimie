@@ -94,9 +94,12 @@ for elem in cfg.keys():
     if elem not in config[args.name]:
         continue
     cfg[elem]=config[args.name][elem]
-for elem in ['API_PORT','AMI_PORT','MAX_RETRIES','RETRY_DELAY','TOKEN_EXPIRY_HOURS']:
+for elem in ['API_PORT','AMI_PORT','MAX_RETRIES','RETRY_DELAY']:
     i=cfg[elem]
     cfg[elem]=int(i)
+for elem in ['TOKEN_EXPIRY_HOURS']:
+    i=cfg[elem]
+    cfg[elem]=float(i)
 
 if 'SENTRY_DSN' in cfg.keys() and len(cfg['SENTRY_DSN']):
     print("Sentry Enabling")
