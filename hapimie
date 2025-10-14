@@ -107,6 +107,8 @@ if 'SENTRY_DSN' in cfg.keys() and len(cfg['SENTRY_DSN']):
 
     sentry_sdk.init(
         dsn=cfg['SENTRY_DSN'],
+        environment="production",
+        release="hapimie@2.0",
         # Add data like request headers and IP for users,
         # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
         send_default_pii=True,
@@ -650,7 +652,7 @@ async def hangup(request: Request,auth=Depends(get_auth_info)):
 def ligne_view(request: Request, user=Depends(get_user_from_cookie)):
 #def ligne_view(request: Request):
     #user = request.cookies.get("user")
-    refresh_interval = 5000  # en millisecondes
+    refresh_interval = 1000  # en millisecondes
     return templates.TemplateResponse("ligne.html", {
         "request": request,
         "login": user["login"],
@@ -694,6 +696,8 @@ async def get_queue(user=Depends(get_user_from_cookie),queue:str = None):
         hero='QueueStatus'
         allm=await action(hero)
         for bloc in allm:
+            if 'Queue' not in bloc:
+                continue
             quenom=bloc['Queue']
             if quenom not in queueRet.keys():
                 queueRet[quenom]={}
@@ -883,6 +887,8 @@ async def get_endpoints(user=Depends(get_user_from_cookie)):
         return({})
 
     ret=fromcache('endpoints',{})
+    if isinstance(ret, int):
+        return({})
     if len(ret) == 0:
         hero="PJSIPShowEndpoints"
         allend=await action(hero)
