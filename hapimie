@@ -580,6 +580,9 @@ def trichan(allChan):
     ret['Caller']={}
     lnkt={}
 
+    if not isinstance(allChan, list):
+        allCahn=[]
+
     for call in allChan:
         ret['Channels'][call['Channel']]=call
         lnkt[call['Uniqueid']]=call['Channel']
