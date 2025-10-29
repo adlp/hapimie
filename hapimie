@@ -881,6 +881,36 @@ def endpoints_view(request: Request, user=Depends(get_user_from_cookie), refresh
         "refresh_interval": refresh * 1000  # en millisecondes pour JS
     })
 
+@declare_path(app, "get", f"{cfg['API_PATH']}/endpoints_grps")
+@declare_path(app, "get", cfg['API_PATH']+"/endpoints_grps/{varlf}",summary="Renvoie uniquement la liste de groupes + endpoint dedans de la variable precisée")
+async def get_endpoints_grps(user=Depends(get_user_from_cookie),varlf:str=None):
+    """
+    Affiche uniquement les variables des endpoints
+    """
+    varsip=fromcache(f"endpointssipvar",{})
+    if not len(varsip):
+        await get_fnc_endpoints()
+        varsip=fromcache(f"endpointssipvar",{})
+
+    endpoinds_per_var={}
+    for endpoint in varsip.keys():
+        if "Vars" in varsip[endpoint]:
+            for var in varsip[endpoint]["Vars"].keys():
+                val=varsip[endpoint]["Vars"][var]
+                if not var in endpoinds_per_var.keys():
+                    endpoinds_per_var[var]={}
+                if not val in endpoinds_per_var[var].keys():
+                    endpoinds_per_var[var][val]=[]
+                endpoinds_per_var[var][val].append(endpoint)
+    if varlf:
+        if varlf in endpoinds_per_var.keys():
+            return(endpoinds_per_var[varlf])
+        else:
+            return({})
+    else:
+        return(endpoinds_per_var)
+        
+
 @declare_path(app, "get", f"{cfg['API_PATH']}/endpoints")
 async def get_endpoints(user=Depends(get_user_from_cookie)):
     """
@@ -888,16 +918,23 @@ async def get_endpoints(user=Depends(get_user_from_cookie)):
     """
     if len(user['login']) == 0:
         return({})
+    return(await get_fnc_endpoints())
 
+async def get_fnc_endpoints():
+    """
+    recupere  tout les endpoints iax/pjsip
+    """
     ret=fromcache('endpoints',{})
     if isinstance(ret, int):
         return({})
     if len(ret) == 0:
+        # Recuperation, sans cache de la liste de tout les endpoionts pjsip
         hero="PJSIPShowEndpoints"
         allend=await action(hero)
+        # Recuperation, via cache de toutes les variables de tout les endppoints
         varsip=fromcache(f"endpointssipvar",{})
         noinitvarsip=len(varsip)
-        for onened in allend:
+        for onened in allend:   # Boucle sur tout les postes
             ide="PJSIP/"+onened["ObjectName"]
             ret[ide]={}
             ret[ide]['ObjectName']=onened["ObjectName"]
@@ -922,9 +959,9 @@ async def get_endpoints(user=Depends(get_user_from_cookie)):
                     varsip[ide]={}
             ret[ide]['SetVar']=varsip[ide]
             ret[ide]['Full']=onened
-            if not noinitvarsip:
+            if not noinitvarsip:    # Si on considere qu'il faut ecraser le cache...
                 tocache(f"endpointssipvar",varsip,600)
-            
+ 
         hero="IAXpeerlist"
         allend=await action(hero)
         for onened in allend:
