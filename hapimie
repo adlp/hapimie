@@ -585,10 +585,14 @@ def trichan(allChan):
         allCahn=[]
 
     for call in allChan:
+        if 'error' == call:
+            continue
         ret['Channels'][call['Channel']]=call
         lnkt[call['Uniqueid']]=call['Channel']
 
     for call in allChan:
+        if 'error' == call:
+            continue
         phone=call['Channel'].split('-')[0]
         if call['Linkedid'] in lnkt.keys():
             ret['Channels'][call['Channel']]['_Linkedid']=lnkt[call['Linkedid']]
