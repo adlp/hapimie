@@ -16,6 +16,7 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from time import time, sleep
 import csv, httpx
+import re
 try:
     from jose import jwt, JWTError
 except ImportError:
@@ -883,32 +884,38 @@ def endpoints_view(request: Request, user=Depends(get_user_from_cookie), refresh
 
 @declare_path(app, "get", f"{cfg['API_PATH']}/endpoints_grps")
 @declare_path(app, "get", cfg['API_PATH']+"/endpoints_grps/{varlf}",summary="Renvoie uniquement la liste de groupes + endpoint dedans de la variable precisée")
-async def get_endpoints_grps(user=Depends(get_user_from_cookie),varlf:str=None):
+@declare_path(app, "get", cfg['API_PATH']+"/endpoints_grps/{varlf}/{vallf}",summary="Renvoie uniquement la liste de groupes + endpoint dedans de la variable precisée")
+async def get_endpoints_grps(user=Depends(get_user_from_cookie),varlf:str=None,vallf:str=None):
     """
     Affiche uniquement les variables des endpoints
     """
+    await get_fnc_endpoints()   # En fait la fonction ne regenerera les caches que si necessaire
     varsip=fromcache(f"endpointssipvar",{})
-    if not len(varsip):
-        await get_fnc_endpoints()
-        varsip=fromcache(f"endpointssipvar",{})
+    endpo=fromcache('endpoints',{})
 
-    endpoinds_per_var={}
+    endpoints_per_var={}
     for endpoint in varsip.keys():
         if "Vars" in varsip[endpoint]:
             for var in varsip[endpoint]["Vars"].keys():
                 val=varsip[endpoint]["Vars"][var]
-                if not var in endpoinds_per_var.keys():
-                    endpoinds_per_var[var]={}
-                if not val in endpoinds_per_var[var].keys():
-                    endpoinds_per_var[var][val]=[]
-                endpoinds_per_var[var][val].append(endpoint)
+                if not var in endpoints_per_var.keys():
+                    endpoints_per_var[var]={}
+                if not val in endpoints_per_var[var].keys():
+                    endpoints_per_var[var][val]={}
+                endpoints_per_var[var][val][endpoint]=endpo[endpoint]
     if varlf:
-        if varlf in endpoinds_per_var.keys():
-            return(endpoinds_per_var[varlf])
+        if varlf in endpoints_per_var.keys():
+            if vallf:
+                if vallf in endpoints_per_var[varlf].keys():
+                    return(endpoints_per_var[varlf][vallf])
+                else:
+                    return({})
+            else:
+                return(endpoints_per_var[varlf])
         else:
             return({})
     else:
-        return(endpoinds_per_var)
+        return(endpoints_per_var)
         
 
 @declare_path(app, "get", f"{cfg['API_PATH']}/endpoints")
@@ -939,9 +946,11 @@ async def get_fnc_endpoints():
             ret[ide]={}
             ret[ide]['ObjectName']=onened["ObjectName"]
             ret[ide]['Type']="PJSIP"
-            ret[ide]['Contacts']=''
-            if 'Contacts' in onened.keys():
-                ret[ide]['Contacts']=onened['Contacts']
+            if 'Contacts' in onened.keys() and len(onened['Contacts']):
+                ret[ide]['Contacts']=re.findall(r'@(\d+\.\d+\.\d+\.\d+)',onened['Contacts'])
+# "10003/sip:10003@10.37.0.239:55320;line=9xkpw9m9,10003/sip:10003@10.37.0.239:55320;line=mgpu4zc1,"
+# "antoine/sip:antoine@192.168.0.239:55320;line=9xkpw9m9,antoine/sip:antoine@192.168.0.92:55320;line=mgpu4zc1,"
+# "192.168.0.239" et "192.168.0.92"
             ret[ide]['Up']=True
             if onened['DeviceState']=="Unavailable":
                 ret[ide]['Up']=False
@@ -975,7 +984,7 @@ async def get_fnc_endpoints():
             if onened['Status']=="UNKNOWN":
                 ret[ide]['Up']=False
             ret[ide]['Full']=onened
-        tocache('endpoints',1)
+        tocache('endpoints',ret,3)
     return(ret)
 
 @app.get("/dial", response_class=HTMLResponse)
