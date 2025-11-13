@@ -11,6 +11,8 @@ class Pano:
         # Help variables
         self.helpAll=self.Cache(self._help_feedFull,timeout=60)
         self.helpDetail={}
+        # Channels variables
+        self.channelCache=self.Cache(self._chan_feed,timeout=1)
 
         self.cache=self.Cache(self)
 
@@ -151,8 +153,69 @@ class Pano:
         print(self.helpAll)
         print('🦆 ke Help E')
         return(await self.helpAll.keys())
-        
 
+    async def _chan_feed(self):
+        hero = {'Action':"Status","AllVariables":"True"}
+        allChan=await self.action(hero)
+        ret={}
+        ret['Channels']={}
+        ret['Phones']={}
+        ret['Caller']={}
+        lnkt={}
+    
+        if not isinstance(allChan, list):
+            allCahn=[]
+    
+        for call in allChan:
+            if 'error' == call:
+                continue
+            ret['Channels'][call['Channel']]=call
+            lnkt[call['Uniqueid']]=call['Channel']
+    
+        for call in allChan:
+            if 'error' == call:
+                continue
+            phone=call['Channel'].split('-')[0]
+            if call['Linkedid'] in lnkt.keys():
+                ret['Channels'][call['Channel']]['_Linkedid']=lnkt[call['Linkedid']]
+            if 'DNID' in call.keys() and call['Uniqueid'] == call['Linkedid']:
+                ret['Channels'][call['Channel']]['_Call']=call['DNID']
+                ret['Caller'][call['Channel']]=[]
+            else:
+                ret['Channels'][call['Channel']]['_Call']='_Receiving'
+            ret['Channels'][call['Channel']]['_Phone']=phone
+    
+            if phone not in ret['Phones']:
+                ret['Phones'][phone]=[]
+            ret['Phones'][phone].append(call['Channel'])
+    
+            if 'Variable' in call.keys():
+                ret['Channels'][call['Channel']]['Variables']={}
+                if isinstance(call['Variable'],str):
+                    clef,val=call['Variable'].split('=',1)
+                    ret['Channels'][call['Channel']]['Variables'][clef]=val
+                else:
+                    for ligne in call['Variable']:
+                        if '=' not in ligne:
+                            print(f'[ERR][/api/status] Erreure Analyse {ligne}')
+                            pprint(allChan)
+                            continue
+                        clef,val=ligne.split('=',1)
+                        ret['Channels'][call['Channel']]['Variables'][clef]=val
+    
+        if len(ret['Caller']):
+            for call in allChan:
+                if '_Linkedid' in call and ret['Channels'][call['Channel']]['_Call']=='_Receiving':
+                    ret['Caller'][call['_Linkedid']].append(call['Channel'])
+        return(ret)
+
+    async def channels(self):
+        """
+            Liste tout les channels et renvoie le json correspondant
+            En rajoutant des aides et de l'usage du cache
+            Renvoie le status.... hmmmm ca ressemble a un coreshowchannel
+        """
+        return(await self.channelCache.dict())
 
     ####### PROTOCOL !!!!!
     def startup(self):
@@ -262,58 +325,6 @@ class Pano:
             self.tocache('status',ret,1)
         return(ret)
 
-    def trichan(self,allChan):
-        ret={}
-        ret['Channels']={}
-        ret['Phones']={}
-        ret['Caller']={}
-        lnkt={}
-    
-        if not isinstance(allChan, list):
-            allCahn=[]
-    
-        for call in allChan:
-            if 'error' == call:
-                continue
-            ret['Channels'][call['Channel']]=call
-            lnkt[call['Uniqueid']]=call['Channel']
-    
-        for call in allChan:
-            if 'error' == call:
-                continue
-            phone=call['Channel'].split('-')[0]
-            if call['Linkedid'] in lnkt.keys():
-                ret['Channels'][call['Channel']]['_Linkedid']=lnkt[call['Linkedid']]
-            if 'DNID' in call.keys() and call['Uniqueid'] == call['Linkedid']:
-                ret['Channels'][call['Channel']]['_Call']=call['DNID']
-                ret['Caller'][call['Channel']]=[]
-            else:
-                ret['Channels'][call['Channel']]['_Call']='_Receiving'
-            ret['Channels'][call['Channel']]['_Phone']=phone
-    
-            if phone not in ret['Phones']:
-                ret['Phones'][phone]=[]
-            ret['Phones'][phone].append(call['Channel'])
-    
-            if 'Variable' in call.keys():
-                ret['Channels'][call['Channel']]['Variables']={}
-                if isinstance(call['Variable'],str):
-                    clef,val=call['Variable'].split('=',1)
-                    ret['Channels'][call['Channel']]['Variables'][clef]=val
-                else:
-                    for ligne in call['Variable']:
-                        if '=' not in ligne:
-                            print(f'[ERR][/api/status] Erreure Analyse {ligne}')
-                            pprint(allChan)
-                            continue
-                        clef,val=ligne.split('=',1)
-                        ret['Channels'][call['Channel']]['Variables'][clef]=val
-    
-        if len(ret['Caller']):
-            for call in allChan:
-                if '_Linkedid' in call and ret['Channels'][call['Channel']]['_Call']=='_Receiving':
-                    ret['Caller'][call['_Linkedid']].append(call['Channel'])
-        return(ret)
 
 
 

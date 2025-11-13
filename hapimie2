@@ -206,12 +206,12 @@ async def api_help(varSession,params={}):
 
 #async def get_status(auth=Depends(get_auth_info)):
 #async def get_status(request: Request):
-async def get_status(varSession,params={}):
+async def api_status(varSession,params={}):
     """
     Renvoie le status.... hmmmm ca ressemble a un coreshowchannel
     """
     if 'preferred_username' in varSession.keys():
-        ret=await asti.status()
+        ret=await asti.channels()
         ## TODO gerer les droits ici
         return(ret)
     else:
@@ -643,7 +643,7 @@ apiFunc=[
     (f"{cfg['API_PATH']}/help",api_help),
     (f"{cfg['API_PATH']}/help/",api_help),
     (cfg['API_PATH']+"/help/{command}",api_help),
-    (f"{cfg['API_PATH']}/status",get_status),
+    (f"{cfg['API_PATH']}/status",api_status),
     (f"{cfg['API_PATH']}/queue",get_queue),
     (f"{cfg['API_PATH']}/queue/",get_queue),
     (cfg['API_PATH']+"/queue/{queue}",get_queue),
