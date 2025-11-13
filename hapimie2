@@ -631,36 +631,34 @@ webFunc=[
     ("/help",form_help),
     ("/help/{nom}",form_help_detail),
     ("/ligne",ligne_view),
-    ("/queue", queue),
-    ("/dbview",dbview),
-    ("/endpoints", endpoints_view),
-    ("/dial", dial_page),
+#    ("/queue", queue),
+#    ("/dbview",dbview),
+#    ("/endpoints", endpoints_view),
+#    ("/dial", dial_page),
     ("/favicon.ico",funNull),
     ]
 apiFunc=[
-    (cfg['API_PATH']+"/cache",show_cache),
-    (cfg['API_PATH']+"/help-syntax/{command}",get_help_stx),
     (f"{cfg['API_PATH']}/help",api_help),
     (f"{cfg['API_PATH']}/help/",api_help),
     (cfg['API_PATH']+"/help/{command}",api_help),
     (f"{cfg['API_PATH']}/status",api_status),
-    (f"{cfg['API_PATH']}/queue",get_queue),
-    (f"{cfg['API_PATH']}/queue/",get_queue),
-    (cfg['API_PATH']+"/queue/{queue}",get_queue),
-    (f"{cfg['API_PATH']}/databaseshow",get_databaseshow),
-    (f"{cfg['API_PATH']}/endpoints_grps",get_endpoints_grps),
-    (cfg['API_PATH']+"/endpoints_grps/{varlf}",get_endpoints_grps),
-    (cfg['API_PATH']+"/endpoints_grps/{varlf}/{vallf}",get_endpoints_grps),
-    (f"{cfg['API_PATH']}/endpoints",get_endpoints),
-    (f"{cfg['API_PATH']}/myphones",get_myphones),
-    (f"{cfg['API_PATH']}/trackeur",showtrack),
+#    (f"{cfg['API_PATH']}/queue",get_queue),
+#    (f"{cfg['API_PATH']}/queue/",get_queue),
+#    (cfg['API_PATH']+"/queue/{queue}",get_queue),
+#    (f"{cfg['API_PATH']}/databaseshow",get_databaseshow),
+#    (f"{cfg['API_PATH']}/endpoints_grps",get_endpoints_grps),
+#    (cfg['API_PATH']+"/endpoints_grps/{varlf}",get_endpoints_grps),
+#    (cfg['API_PATH']+"/endpoints_grps/{varlf}/{vallf}",get_endpoints_grps),
+#    (f"{cfg['API_PATH']}/endpoints",get_endpoints),
+#    (f"{cfg['API_PATH']}/myphones",get_myphones),
+#    (f"{cfg['API_PATH']}/trackeur",showtrack),
     ]
 apiPostFunc=[
-    (cfg['API_PATH']+"/help-exec",help_exec), #POST
-    (cfg['API_PATH']+"/HangUp",hangup), # POST
-    (cfg['API_PATH']+"/dbPut",db_put), # POST
-    (cfg['API_PATH']+"/dbDel",db_del), # POST
-    (f"{cfg['API_PATH']}/dial",dial_api), # POST
+#    (cfg['API_PATH']+"/help-exec",help_exec), #POST
+#    (cfg['API_PATH']+"/HangUp",hangup), # POST
+#    (cfg['API_PATH']+"/dbPut",db_put), # POST
+#    (cfg['API_PATH']+"/dbDel",db_del), # POST
+#    (f"{cfg['API_PATH']}/dial",dial_api), # POST
     ]
 
 
