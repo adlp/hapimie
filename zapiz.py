@@ -160,6 +160,11 @@ class Zapiz:
         #self.app.get(uri)(self._secure_api(func))
         #self.app.add_api_route(uri,self._secure_api(func),methods=["GET"], response_class=HTMLResponse)
         response_class = HTMLResponse if html else JSONResponse
+        if uri[-1] != "/":
+            if verb=="get":
+                self.app.get(uri+"/", response_class=response_class)(self._secure_api(func))
+            elif verb=="post":
+                self.app.post(uri+"/", response_class=response_class)(self._secure_api(func))
         if verb=="get":
             self.app.get(uri, response_class=response_class)(self._secure_api(func))
         elif verb=="post":
