@@ -119,15 +119,10 @@ app = Zapiz(
     )
 
 
-#def home(request: Request, user=Depends(get_user_from_cookie)):
-#def home(request: Request,user):
 def home(varSession,params={}):
 #, user=Depends(get_user_from_cookie)):
     print(f"🈁 Ici on est")
-    #user = request.session.get("user")
-    #htmlvars= {"request": request,
-    #    "sentry_dsn": cfg.get("SENTRY_DSN"),
-    #return templates.TemplateResponse("welcome.html", htmlvars )
+
     return ({'template':"welcome.html",'varSession': varSession })
 
 #def json_view(request: Request, user=Depends(get_user_from_cookie),nom: str = None):
@@ -206,7 +201,7 @@ async def api_help(varSession,params={}):
         command=params['command']
     else:
         command=None
-    ret=await asti.helps[command]
+    ret=await asti.help(command)
     return(ret)
 
 #async def get_status(auth=Depends(get_auth_info)):
@@ -236,9 +231,6 @@ async def hangup(request: Request):
         raise HTTPException(status_code=508)
     hero={'action':'HangUp', 'Channel': Channel,'Cause': 'API Call' }
     return(await action(hero))
-
-def show_help(varSession,params={}):
-    return ({'template':"help.html",'varSession': varSession })
 
 #def ligne_view(request: Request, user=Depends(get_user_from_cookie)):
 #def ligne_view(request: Request):
