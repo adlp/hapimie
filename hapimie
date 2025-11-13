@@ -102,6 +102,8 @@ for elem in ['TOKEN_EXPIRY_HOURS']:
     i=cfg[elem]
     cfg[elem]=float(i)
 
+cfg['API_PORT']+=1
+
 if 'SENTRY_DSN' in cfg.keys() and len(cfg['SENTRY_DSN']):
     print("Sentry Enabling")
     import sentry_sdk
