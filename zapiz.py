@@ -191,8 +191,8 @@ class Zapiz:
                 nextstep=result
                 nextstep['request']=request
                 if 'template_data' in result.keys():
-                    for k,v in result['template_data']:
-                        nextstep[k]=v
+                    for k in result['template_data'].keys():
+                        nextstep[k]=result['template_data'][k]
                 nextstep['refresh_interval']=1000
                 #print('👽️ result')
                 #print(result)
