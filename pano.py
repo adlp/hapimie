@@ -217,6 +217,13 @@ class Pano:
         """
         return(await self.channelCache.dict())
 
+    async def channel_del(self,channelid=None):
+        hero={'action':'HangUp', 'Channel': channelid,'Cause': 'API Call' }
+        if not channelid:
+            return(None)
+        else:
+            return(await self.action(hero))
+
     ####### PROTOCOL !!!!!
     def startup(self):
         print("Connexion a l'AMI")

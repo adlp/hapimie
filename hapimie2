@@ -210,27 +210,28 @@ async def api_status(varSession,params={}):
     """
     Renvoie le status.... hmmmm ca ressemble a un coreshowchannel
     """
-    if 'preferred_username' in varSession.keys():
-        ret=await asti.channels()
-        ## TODO gerer les droits ici
-        return(ret)
-    else:
+    if not 'preferred_username' in varSession.keys():
         return({ "Channels": {}, "Phones": {}, "Caller": {} })
 
+    ret=await asti.channels()
+    ## TODO gerer les droits ici
+    return(ret)
+
 #async def hangup(request: Request,auth=Depends(get_auth_info)):
-async def hangup(request: Request):
+async def api_hangup(varSession,params={}):
     """
     Permet de raccrocher le channel en cours
     """
-    user = request.session.get("user")
-    if not auth['login']:
-        raise HTTPException(status_code=403)
-    data= await request.json()
-    Channel=data.get("channel_id")
-    if Channel is None:
-        raise HTTPException(status_code=508)
-    hero={'action':'HangUp', 'Channel': Channel,'Cause': 'API Call' }
-    return(await action(hero))
+    if not 'preferred_username' in varSession.keys():
+        #raise HTTPException(status_code=403)
+        return(None)
+
+    chan=params.get("channel_id",None)
+    ret=await asti.channel_del(chan)
+    if ret is None:
+        #raise HTTPException(status_code=508)
+        return(None)
+    return(ret)
 
 #def ligne_view(request: Request, user=Depends(get_user_from_cookie)):
 #def ligne_view(request: Request):
@@ -655,7 +656,7 @@ apiFunc=[
     ]
 apiPostFunc=[
 #    (cfg['API_PATH']+"/help-exec",help_exec), #POST
-#    (cfg['API_PATH']+"/HangUp",hangup), # POST
+    (cfg['API_PATH']+"/HangUp",api_hangup), # POST
 #    (cfg['API_PATH']+"/dbPut",db_put), # POST
 #    (cfg['API_PATH']+"/dbDel",db_del), # POST
 #    (f"{cfg['API_PATH']}/dial",dial_api), # POST
