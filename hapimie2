@@ -125,10 +125,10 @@ def home(varSession,params={}):
 
     return ({'template':"welcome.html",'varSession': varSession })
 
-#def json_view(request: Request, user=Depends(get_user_from_cookie),nom: str = None):
-#def json_view(request: Request, nom: str = None):
-#def json_view(varSession,*args,**kwargs):
-def json_view(varSession,params={}):
+#def form_view(request: Request, user=Depends(get_user_from_cookie),nom: str = None):
+#def form_view(request: Request, nom: str = None):
+#def form_view(varSession,*args,**kwargs):
+def form_view(varSession,params={}):
     #varSession={}
     print(varSession)
     nom=params.get('nom',None)
@@ -625,9 +625,9 @@ def funNull(varSession=None,params=None):
 
 webFunc=[
     ("/",home),
-    ("/json",json_view),
-    ("/json/",json_view),
-    ("/json/{nom}",json_view),
+    ("/json",form_view),
+    ("/json/",form_view),
+    ("/json/{nom}",form_view),
     ("/help",form_help),
     ("/help/{nom}",form_help_detail),
     ("/ligne",ligne_view),
