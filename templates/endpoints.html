@@ -8,21 +8,16 @@
 
 <div id="popup" class="popup" style="display:none;">
   <span class="popup-close" onclick="closePopup()">❌</span>
+    <h3>Info Endpoint</h3>
     <pre id="popup-content"></pre>
-</div>
-
-<div id="ipopup" class="popup" style="display:none;">
-    <span class="popup-close" onclick="document.getElementById('popup').style.display='none'">X</span>
-  <h3>Détails du poste</h3>
-  <pre id="popup-content"></pre>
 </div>
 
 <style>
     .poste {
         display: inline-block;
         width: 120px;
-        height: 80px;
-        margin: 10px;
+        height: 40px;
+        margin: 05px;
         padding: 10px;
         text-align: center;
         vertical-align: middle;
@@ -43,18 +38,11 @@
 </style>
 
 <script>
-    //const params = new URLSearchParams(window.location.search);
-    //const nom = params.get("nom");
-    //const groupe = params.get("groupe");
-    //const nom = "PhoneSiteNom";
-    //const groupe = "Strasbourg";
     const nom = "{{ nom }}";
     const groupe = "{{ groupe }}";
 
-    //const groupes = nom ? grpRes[nom] : {};
     console.log("nom récupérés :", nom);
     console.log("Groupe récupérés :", groupe);
-    //console.log("Groupes récupérés :", groupes);
 
     async function chargerDonnees() {
         const [grpRes, endRes] = await Promise.all([
