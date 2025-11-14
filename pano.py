@@ -42,7 +42,7 @@ class Pano:
         async def _tryOrGet(self,Force=False):
             if Force or len(self.cache)==0 or ( self.timeout and int(time())-self.timeput > self.timeout):
             #if len(self.cache)==0 or int(time())-self.timeput > self.timeout or Force:
-                print('👻 Generating cache')
+                #print('👻 Generating cache')
                 if self.func:
                     if self.funcarg:
                         self.cache=await self.func(self.funcarg)
@@ -66,16 +66,16 @@ class Pano:
                 return(self._getRecursif(key.split(self.splitKK),self.cache))
             elif isinstance(self.cache,list):
                 if key>len(self.cache):
-                    print('👻 Not in cache')
+                    #print('👻 Not in cache')
                     return(self.defaultValue)
                 else:
-                    print('👻 Lost in cache')
+                    #print('👻 Lost in cache')
                     return(self.cache[key])
             elif key in self.cache.keys():
-                print('👻 Using cache')
+                #print('👻 Using cache')
                 return(self.cache[key])
             else:
-                print('👻 Not in cache')
+                #print('👻 Not in cache')
                 return(self.defaultValue)
 
         async def __len__(self):
@@ -272,7 +272,7 @@ class Pano:
         return(ret)
 
     async def _ep_feedOne(self,command):
-        print('📵 Integration ou Réintegration de poste')
+        #print('📵 Integration ou Réintegration de poste')
         var={}
         if command.startswith("PJSIP"):
             hero={"Action":"PJSIPShowEndpoint","Endpoint": command[6:]}
@@ -319,7 +319,7 @@ class Pano:
         return(ret)
 
     async def endpoints(self):
-        print('☎️  start')
+        #print('☎️  start')
         #if not len(self.epAll):
         #    self.epAll=self.Cache(self._ep_feedFull,timeout=10)
         #print(await self.epAll.dict())
@@ -338,7 +338,7 @@ class Pano:
                 for varValue in self.epGrpVar[varName]:
                     if ep in self.epGrpVar[varName][varValue]:
                         epGrpVar[varName][varValue].remove(ep)
-        print(f'☎️  stop')
+        #print(f'☎️  stop')
         return(ret)
 
     async def endpointsGrp(self,grp=None):
@@ -416,7 +416,7 @@ class Pano:
         for attempt in range(1, MAX_RETRIES + 1):
             try:
                 response = await asyncio.wait_for(self.manager.send_action(hero), timeout=RETRY_DELAY)
-                print(f"👽️ Last action hero {hero}")
+                #print(f"👽️ Last action hero {hero}")
                 break
             except (asyncio.TimeoutError, ConnectionError) as e:
                 print(f"⚠️ Tentative {attempt} échouée : {e}")

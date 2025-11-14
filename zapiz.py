@@ -155,7 +155,7 @@ class Zapiz:
             return self.templates.TemplateResponse(template_path, {"request": request, "user": user})
 
     def api(self, uri: str, func: Callable,html:bool=False,verb:str="get"):
-        print(f'Adding route {verb} {uri} : {html}')
+        #print(f'Adding route {verb} {uri} : {html}')
         #self.api_routes[uri] = func
         #self.app.get(uri)(self._secure_api(func))
         #self.app.add_api_route(uri,self._secure_api(func),methods=["GET"], response_class=HTMLResponse)
