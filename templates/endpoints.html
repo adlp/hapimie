@@ -1,75 +1,110 @@
 {% extends "base.html" %}
 
-{% block title %}📡 Endpoints{% endblock %}
+{% block title %}☎️  Endpoints{% endblock %}
 
 {% block content %}
-<h1>📞 Liste des Endpoints</h1>
-<div id="endpoint-list">Chargement...</div>
-
-<div id="overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:999;"></div>
+<h1>Vue des postes</h1>
+<div id="conteneur"></div>
 
 <div id="popup" class="popup" style="display:none;">
   <span class="popup-close" onclick="closePopup()">❌</span>
-  <h3>Détails de l'endpoint</h3>
+    <pre id="popup-content"></pre>
+</div>
+
+<div id="ipopup" class="popup" style="display:none;">
+    <span class="popup-close" onclick="document.getElementById('popup').style.display='none'">X</span>
+  <h3>Détails du poste</h3>
   <pre id="popup-content"></pre>
 </div>
 
 <style>
-  .endpoint-item {
-    padding: 10px;
-    margin: 5px;
-    cursor: pointer;
-    border-radius: 5px;
-  }
-  .up-true-free { background-color: #c8f7c5; }
-  .up-true-busy { background-color: #fff3a3; }
-  .up-false { background-color: #f4f4f4; }
+    .poste {
+        display: inline-block;
+        width: 120px;
+        height: 80px;
+        margin: 10px;
+        padding: 10px;
+        text-align: center;
+        vertical-align: middle;
+        border-radius: 8px;
+        cursor: pointer;
+        color: white;
+        font-weight: bold;
+    }
+    .up { background-color: green; }
+    .down { background-color: red; }
+    .groupe { margin-top: 30px; }
 </style>
 
 <script>
-  const refreshInterval = {{ refresh_interval }};
+    //const params = new URLSearchParams(window.location.search);
+    //const nom = params.get("nom");
+    //const groupe = params.get("groupe");
+    //const nom = "PhoneSiteNom";
+    //const groupe = "Strasbourg";
+    const nom = "{{ nom }}";
+    const groupe = "{{ groupe }}";
 
-  async function loadEndpoints() {
-    const [endpointsRes, statusRes] = await Promise.all([
-      fetch("/api/endpoints"),
-      fetch("/api/status")
-    ]);
-    const endpoints = await endpointsRes.json();
-    const status = await statusRes.json();
-    const phones = status.Phones || {};
+    //const groupes = nom ? grpRes[nom] : {};
+    console.log("nom récupérés :", nom);
+    console.log("Groupe récupérés :", groupe);
+    //console.log("Groupes récupérés :", groupes);
 
-    const container = document.getElementById("endpoint-list");
-    container.innerHTML = "";
+    async function chargerDonnees() {
+        const [grpRes, endRes] = await Promise.all([
+            fetch("/api/endpointPerGrp").then(r => r.json()),
+            fetch("/api/endpoints").then(r => r.json())
+        ]);
 
-    Object.entries(endpoints).forEach(([key, data]) => {
-      const objectName = data.ObjectName;
-      const isUp = data.Up;
-      const isBusy = Object.keys(phones).includes(key);
+        const groupes = nom ? grpRes[nom] : {};
+        const endpoints = endRes;
 
-      let cssClass = "endpoint-item ";
-      if (!isUp) cssClass += "up-false";
-      else cssClass += isBusy ? "up-true-busy" : "up-true-free";
+        const conteneur = document.getElementById("conteneur");
+        conteneur.innerHTML = "";
 
-      const div = document.createElement("div");
-      div.className = cssClass;
-      div.textContent = objectName;
-      div.onclick = () => showPopup(data);
-      container.appendChild(div);
-    });
-  }
+        for (const [sousGroupe, postes] of Object.entries(groupes)) {
+            if (groupe && sousGroupe !== groupe) continue;
+            console.log("Postes du groupe", sousGroupe, postes);
 
-  function showPopup(data) {
-    document.getElementById("popup-content").textContent = JSON.stringify(data, null, 2);
-    document.getElementById("popup").style.display = "block";
-    document.getElementById("overlay").style.display = "block";
+            const bloc = document.createElement("div");
+            bloc.className = "groupe";
+            bloc.innerHTML = `<h2>${sousGroupe}</h2>`;
+
+            const postesInfos = postes
+                .map(p => ({ id: p, ...endpoints[p] }))
+                .filter(p => p.ObjectName)
+                .sort((a, b) => a.ObjectName.localeCompare(b.ObjectName));
+
+            for (const poste of postesInfos) {
+                const div = document.createElement("div");
+                div.className = `poste ${poste.Up ? "up" : "down"}`;
+                div.textContent = poste.ObjectName;
+                div.onclick = () => {
+                    document.getElementById("popup-content").textContent = JSON.stringify(poste, null, 2);
+                    document.getElementById("popup").style.display = "block";
+                };
+                bloc.appendChild(div);
+            }
+
+            conteneur.appendChild(bloc);
+        }
+    }
+
+  function showPopup(id) {
+    fetch("/api/status")
+      .then(res => res.json())
+      .then(apir => {
+        const data = apir.Channels[id];
+        document.getElementById("popup-content").textContent = JSON.stringify(data, null, 2);
+        document.getElementById("popup").style.display = "block";
+      });
   }
 
   function closePopup() {
     document.getElementById("popup").style.display = "none";
-    document.getElementById("overlay").style.display = "none";
   }
 
-  loadEndpoints();
-  setInterval(loadEndpoints, refreshInterval);
+
+    chargerDonnees();
 </script>
 {% endblock %}

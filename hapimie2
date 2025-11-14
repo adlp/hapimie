@@ -150,11 +150,11 @@ async def show_cache(request: Request,nom: str = None):
     user = request.session.get("user")
     return(cache)
 
-#async def get_help_stx(command: str = None):
-async def get_help_stx(varSession,params={}):
-    command=params.get("command",None)
-    ret=await asti.help_stx(command)
-    return ( ret  )
+##async def get_help_stx(command: str = None):
+#async def get_help_stx(varSession,params={}):
+#    command=params.get("command",None)
+#    ret=await asti.help_stx(command)
+#    return ( ret  )
 
 #async def help_exec(request: Request,user=Depends(get_user_from_cookie),nom: str = None):
 #async def help_exec(request: Request,nom: str = None):
@@ -183,6 +183,10 @@ async def api_help_exec(varSession,params={}):
 
 def form_help(varSession,params={}):
     return ({'template':"help.html",'varSession': varSession })
+
+def form_endpoints(varSession,params={}):
+    #return ({'template':'endpoints.html','varSession':varSession})
+    return ({'template':'endpoints.html','nom':params.get('nom',None),"groupe":params.get('groupe',None)})
 
 def form_help_detail(varSession,params={}):
     print('🔎help The detail')
@@ -237,7 +241,7 @@ async def api_endpoints(varSession,params={}):
     ret=await asti.endpoints()
     return(ret)
 
-async def api_endpointsGrp(varSession,params={}):
+async def api_endpointPerGrp(varSession,params={}):
     if not 'preferred_username' in varSession.keys():
         #raise HTTPException(status_code=403)
         return(None)
@@ -246,7 +250,7 @@ async def api_endpointsGrp(varSession,params={}):
 
 #def ligne_view(request: Request, user=Depends(get_user_from_cookie)):
 #def ligne_view(request: Request):
-def ligne_view(varSession,params={}):
+def form_ligne(varSession,params={}):
     refresh_interval = 1000  # en millisecondes
 
     if 'preferred_username' in varSession.keys():
@@ -642,7 +646,10 @@ webFunc=[
     ("/json/{nom}",form_view),
     ("/help",form_help),
     ("/help/{nom}",form_help_detail),
-    ("/ligne",ligne_view),
+    ("/ligne",form_ligne),
+    ("/endpoints",form_endpoints),
+    ("/endpoints/{nom}",form_endpoints),
+    ("/endpoints/{nom}/{groupe}",form_endpoints),
 #    ("/queue", queue),
 #    ("/dbview",dbview),
 #    ("/endpoints", endpoints_view),
@@ -661,7 +668,7 @@ apiFunc=[
 #    (cfg['API_PATH']+"/endpoints_grps/{varlf}",get_endpoints_grps),
 #    (cfg['API_PATH']+"/endpoints_grps/{varlf}/{vallf}",get_endpoints_grps),
     (f"{cfg['API_PATH']}/endpoints",api_endpoints),
-    (f"{cfg['API_PATH']}/endpointsgrp",api_endpointsGrp),
+    (f"{cfg['API_PATH']}/endpointPerGrp",api_endpointPerGrp),
 #    (f"{cfg['API_PATH']}/myphones",get_myphones),
 #    (f"{cfg['API_PATH']}/trackeur",showtrack),
     ]
@@ -677,11 +684,9 @@ apiPostFunc=[
 for route,func in webFunc:
     app.api(route,func)
 
-print('nan')
 for route,func in apiFunc:
     app.api(route,func,html=False)
 
-print('nan')
 for route,func in apiPostFunc:
     app.api(route,func,html=False,verb="post")
 
