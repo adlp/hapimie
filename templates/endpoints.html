@@ -34,6 +34,12 @@
     .up { background-color: green; }
     .down { background-color: red; }
     .groupe { margin-top: 30px; }
+    .anchors a {
+        margin-right: 15px;
+        font-weight: bold;
+        text-decoration: none;
+        color: #0077cc;
+    }
 </style>
 
 <script>
@@ -50,7 +56,6 @@
     console.log("Groupe récupérés :", groupe);
     //console.log("Groupes récupérés :", groupes);
 
-
     async function chargerDonnees() {
         const [grpRes, endRes] = await Promise.all([
             fetch("/api/endpointPerGrp").then(r => r.json()),
@@ -61,7 +66,6 @@
         conteneur.innerHTML = "";
 
         if (!nom || nom.trim() === "") {
-            // Afficher les groupes de premier niveau
             conteneur.innerHTML = "<h2>Choisissez un groupe principal :</h2>";
             for (const cle of Object.keys(grpRes)) {
                 const lien = document.createElement("a");
@@ -78,11 +82,26 @@
         const groupes = grpRes[nom] || {};
         const endpoints = endRes;
 
+        // 🔗 Liste des ancres si groupe non précisé
+        if (!groupe) {
+            const anchorBar = document.createElement("div");
+            anchorBar.className = "anchors";
+            anchorBar.innerHTML = "<h2>Accès rapide :</h2>";
+            for (const sousGroupe of Object.keys(groupes)) {
+                const a = document.createElement("a");
+                a.href = `#${encodeURIComponent(sousGroupe)}`;
+                a.textContent = sousGroupe;
+                anchorBar.appendChild(a);
+            }
+            conteneur.appendChild(anchorBar);
+        }
+
         for (const [sousGroupe, postes] of Object.entries(groupes)) {
             if (groupe && sousGroupe !== groupe) continue;
 
             const bloc = document.createElement("div");
             bloc.className = "groupe";
+            bloc.id = sousGroupe; // 🔗 ancre HTML
             bloc.innerHTML = `<h2>${sousGroupe}</h2>`;
 
             const postesInfos = postes
@@ -104,6 +123,8 @@
             conteneur.appendChild(bloc);
         }
     }
+
+
 
   function showPopup(id) {
     fetch("/api/status")
