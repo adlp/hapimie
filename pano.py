@@ -9,10 +9,15 @@ import inspect
 class Pano:
     def __init__(self, host="127.0.0.1", port=5038, login="login", password="password"):
         # Help variables
-        self.helpAll=self.Cache(self._help_feedFull,timeout=60)
+        self.helpAll=self.Cache(self._help_feedFull,timeout=None)
         self.helpDetail={}
+        self.helpDetailTimeout=None
         # Channels variables
         self.channelCache=self.Cache(self._chan_feed,timeout=1)
+        # Endoints variables
+        self.epAll=self.Cache(self._ep_feedFull,timeout=2)
+        self.epDetail={}
+        self.epDetailTimeout=60*5
 
         self.cache=self.Cache(self)
 
@@ -21,16 +26,18 @@ class Pano:
         self.manager = Manager(host=host,port=port,username=login,secret=password,forgetable_actions=('login',))
 
     class Cache:
-        def __init__(self,func: callable=None,funcarg=None,defaultValue=None,timeout=5):
+        def __init__(self,func: callable=None,funcarg=None,defaultValue=None,splitKeyKey=None,timeout=5):
             self.func=func
             self.funcarg=funcarg
             self.timeout=timeout
             self.timeput=int(time())
             self.defaultValue=defaultValue
+            self.splitKK=splitKeyKey
             self.cache={}
 
         async def _tryOrGet(self,Force=False):
-            if len(self.cache)==0 or int(time())-self.timeput > self.timeout or Force:
+            if Force or len(self.cache)==0 or ( self.timeout and int(time())-self.timeput > self.timeout):
+            #if len(self.cache)==0 or int(time())-self.timeput > self.timeout or Force:
                 print('👻 Generating cache')
                 if self.func:
                     if self.funcarg:
@@ -39,45 +46,48 @@ class Pano:
                         self.cache=await self.func()
                 self.timeput=time()
 
-        def __getitem__(self,key: str):
-            self._tryOrGet()
-            if key not in self.cache.key():
-                self._tryOrGet(True)
+        def _getRecursif(self,keys,cache={}):
+            if keys[1:] in cache.keys:
+                if len(keys)>1:
+                    return(self._getRecursif(keys[1:]))
+                else:
+                    return(cache[keys[1:]])
             else:
-                print('👻 Using cache')
-            if key not in self.cache.key():
                 return(self.defaultValue)
-            else:
-                return(self.cache[key])
 
-        def __getitem__(self,key: int):
-            self._tryOrGet()
-            if key > (len(self)-1):
-                self._tryOrGet(True)
-            else:
+        async def get(self,key,splitKey=False):
+            await self._tryOrGet()
+            if splitKey:
+                # On considere None la valeur d'arret dans la recherche recursive
+                return(self._getRecursif(key.split(self.splitKK),self.cache))
+            elif isinstance(self.cache,list):
+                if key>len(self.cache):
+                    print('👻 Not in cache')
+                    return(self.defaultValue)
+                else:
+                    print('👻 Lost in cache')
+                    return(self.cache[key])
+            elif key in self.cache.keys():
                 print('👻 Using cache')
-            if key > (len(self)-1):
-                return(self.defaultValue)
-            else:
                 return(self.cache[key])
+            else:
+                print('👻 Not in cache')
+                return(self.defaultValue)
 
         async def __len__(self):
             self._tryOrGet()
             return(len(self.cache))
 
         async def dict(self):
-            print('👻 Cache dict')
             await self._tryOrGet()
             return(self.cache)
 
         async def keys(self):
-            print('👻 ke Cache D')
             await self._tryOrGet()
             if isinstance(self.cache,list):
                 return(range(1,len(self)))
             else:
                 return(self.cache.keys())
-            print('👻 ke Cache E')
 
     def _decoupe_lexique(self,chaine: str):
         """
@@ -135,24 +145,25 @@ class Pano:
 
     async def help(self,key):
         print('🦆 gt Help')
-        if not len(await self.helpAll.keys()): # On force un reload
-            self.helpAll=self.Cache(self._help_feedFull,timeout=60)
+        #if not len(await self.helpAll.keys()): # On force un reload
+        #    self.helpAll=self.Cache(self._help_feedFull,timeout=600)
 
         if not key:
             print('🦆 gt Help None')
             return(await self.helpAll.dict())
 
         if key not in self.helpDetail.keys():
-            self.helpDetail[key]=self.Cache(self._help_feedOne,funcarg=key,timeout=60)
+            self.helpDetail[key]=self.Cache(self._help_feedOne,funcarg=key,timeout=self.helpDetailTimeout)
         return(await self.helpDetail[key].dict())
 
     async def help_keys(self):
         print('🦆 ke Help D')
-        if not len(await self.helpAll.keys()): # On force un reload
-            self.helpAll=self.Cache(self._help_feedFull,timeout=60)
+        #if not len(await self.helpAll.keys()): # On force un reload
+        #    self.helpAll=self.Cache(self._help_feedFull,timeout=600)
         print(self.helpAll)
         print('🦆 ke Help E')
         return(await self.helpAll.keys())
+
 
     async def _chan_feed(self):
         hero = {'Action':"Status","AllVariables":"True"}
@@ -223,6 +234,137 @@ class Pano:
             return(None)
         else:
             return(await self.action(hero))
+
+    async def _ep_feedFull(self):
+        print('📵📵')
+        import re
+        result=await self.action("PJSIPShowEndpoints")
+        ret={}
+        for ep in result:
+            techObjN='PJSIP/'+ep['ObjectName']
+            ret[techObjN]={}
+            ret[techObjN]['ObjectName']=ep['ObjectName']
+            ret[techObjN]['Type']='PJSIP'
+            ret[techObjN]['Up']=True
+            if ep['DeviceState']=="Unavailable":
+                ret[techObjN]['Up']=False
+            ret[techObjN]['Contacts']=None
+            if 'Contacts' in ep.keys() and len(ep['Contacts']):
+                ret[techObjN]['Contacts']=re.findall(r'@(\d+\.\d+\.\d+\.\d+)',ep['Contacts'])
+            ret[techObjN]['Full']=ep
+        result=await self.action("IAXpeerlist")
+        for ep in result:
+            techObjN='IAX2/'+ep['ObjectName']
+            ret[techObjN]={}
+            ret[techObjN]['ObjectName']=ep['ObjectName']
+            ret[techObjN]['Type']='IAX2'
+            ret[techObjN]['Up']=True
+            if ep['Status']=="UNKNOWN":
+                ret[techObjN]['Up']=False
+            ret[techObjN]['Contacts']=None
+            if ep['IPaddress']=="(null)":
+                ret[techObjN]['Contacts']=[ ep['IPaddress'] ]
+            ret[techObjN]['Full']=ep
+        return(ret)
+
+    async def _ep_feedOne(self,command):
+        print('📵')
+        if not command.startswith("PJSIP"):
+            return(None)
+
+        hero={"Action":"PJSIPShowEndpoint","Endpoint": command[6:]}
+        result=await self.action(hero)
+        var={}
+        if 'SetVar' in result[0].keys() and len(result[0]['SetVar']):
+            noinitvarsip=0
+            for ligne in result[0]['SetVar'].split(','):
+                k,v=ligne.split('=',1)
+                var[k]=v
+        return(var)
+
+    #async def endpoint(self,name):
+    async def endpoint(self,ep):
+        if ep.startswith('IAX2/'):
+            return(await self.epAll.get(ep))
+        ret={}
+        ret=await self.epAll.get(ep)
+        if ep not in self.epDetail.keys():
+            self.epDetail[ep]=self.Cache(self._ep_feedOne,funcarg=ep,timeout=self.epDetailTimeout)
+        print('🧨 Vars')
+        Vars=await self.epDetail[ep].dict()
+        ret['Vars']={}
+        for k in Vars.keys():
+            ret['Vars'][k]=Vars[k]
+        return(ret)
+
+    async def endpoints(self):
+        print('☎️  start')
+        #if not len(self.epAll):
+        #    self.epAll=self.Cache(self._ep_feedFull,timeout=10)
+        #print(await self.epAll.dict())
+
+        result=await self.epAll.dict()
+        ret={}
+        for ep in await self.epAll.keys():
+            ret[ep]=await self.endpoint(ep)
+        print(f'☎️  stop')
+        return(ret)
+
+    async def iiendpoints(self,grpbyVar=None):
+        """
+          recupere  tout les endpoints iax/pjsip
+        """
+        # Recuperation, sans cache de la liste de tout les endpoionts pjsip
+        hero="PJSIPShowEndpoints"
+        allend=await self.action(hero)
+        # Recuperation, via cache de toutes les variables de tout les endppoints
+        varsip=fromcache(f"endpointssipvar",{})
+        noinitvarsip=len(varsip)
+        for onened in allend:   # Boucle sur tout les postes
+            ide="PJSIP/"+onened["ObjectName"]
+            ret[ide]={}
+            ret[ide]['ObjectName']=onened["ObjectName"]
+            ret[ide]['Type']="PJSIP"
+            if 'Contacts' in onened.keys() and len(onened['Contacts']):
+                ret[ide]['Contacts']=re.findall(r'@(\d+\.\d+\.\d+\.\d+)',onened['Contacts'])
+# "10003/sip:10003@10.37.0.239:55320;line=9xkpw9m9,10003/sip:10003@10.37.0.239:55320;line=mgpu4zc1,"
+# "antoine/sip:antoine@192.168.0.239:55320;line=9xkpw9m9,antoine/sip:antoine@192.168.0.92:55320;line=mgpu4zc1,"
+# "192.168.0.239" et "192.168.0.92"
+            ret[ide]['Up']=True
+            if onened['DeviceState']=="Unavailable":
+                ret[ide]['Up']=False
+            if ide not in varsip:
+                hero={"Action":"PJSIPShowEndpoint","Endpoint":onened["ObjectName"]}
+                tmp=await self.action(hero)
+                if 'SetVar' in tmp[0].keys() and len(tmp[0]['SetVar']):
+                    noinitvarsip=0
+                    varsip[ide]={}
+                    varsip[ide]['Vars']={}
+                    for ligne in tmp[0]['SetVar'].split(','):
+                        k,v=ligne.split('=',1)
+                        varsip[ide]['Vars'][k]=v
+                else:
+                    varsip[ide]={}
+            ret[ide]['SetVar']=varsip[ide]
+            ret[ide]['Full']=onened
+            if not noinitvarsip:    # Si on considere qu'il faut ecraser le cache...
+                tocache(f"endpointssipvar",varsip,600)
+
+        hero="IAXpeerlist"
+        allend=await self.action(hero)
+        for onened in allend:
+            ide="IAX2/"+onened["ObjectName"]
+            ret[ide]={}
+            ret[ide]['ObjectName']=onened["ObjectName"]
+            ret[ide]['Type']="IAX2"
+            if onened['IPaddress']=="(null)":
+                ret[ide]['Contacts']=onened['IPaddress']
+            ret[ide]['Up']=True
+            if onened['Status']=="UNKNOWN":
+                ret[ide]['Up']=False
+            ret[ide]['Full']=onened
+        tocache('endpoints',ret,3)
+        return(ret)
 
     ####### PROTOCOL !!!!!
     def startup(self):
