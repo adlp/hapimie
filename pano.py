@@ -19,7 +19,9 @@ class Pano:
         self.epDetail={}
         self.epDetailTimeout=60*5
         self.epGrpVar={}
-        self.epGrpVar["_"]=[]
+        self.epGrpVar["_"]={}
+        self.epGrpVar["_"]['NoGroup']=[]
+        self.epGrpVar["_"]['All']=[]
 
         self.cache=self.Cache(self)
 
@@ -283,28 +285,28 @@ class Pano:
         ep=command
         # Suppression de tout les groupes existant du phone
         for varName in self.epGrpVar.keys():
-            if varName=="_":
-                continue
             for varValue in self.epGrpVar[varName]:
                 if ep in self.epGrpVar[varName][varValue]:
-                    epGrpVar[varName][varValue].remove(ep)
+                    self.epGrpVar[varName][varValue].remove(ep)
         # Rajoute du phone dans tout les groupes existant
         for k in var.keys():
+            v=var[k]
             if k not in self.epGrpVar.keys():
                 self.epGrpVar[k]={}
             if v not in self.epGrpVar[k].keys():
                 self.epGrpVar[k][v]=[]
             self.epGrpVar[k][v].append(ep)
         if len(var) == 0:
-            self.epGrpVar["_"].append(command)
+            self.epGrpVar["_"]["NoGroup"].append(ep)
         # Plus c'est bourrin plus c'est bon....
+        self.epGrpVar["_"]["All"].append(ep)
         return(var)
 
     #async def endpoint(self,name):
     async def endpoint(self,ep):
         if ep.startswith('IAX2/'):
             if ep not in self.epGrpVar["_"]:
-                self.epGrpVar["_"].append(ep)
+                self.epGrpVar["_"]['NoGroup'].append(ep)
             return(await self.epAll.get(ep))
         ret={}
         ret=await self.epAll.get(ep)
@@ -324,8 +326,18 @@ class Pano:
 
         result=await self.epAll.dict()
         ret={}
+        keysCacheToKill=list(self.epDetail.keys())
         for ep in await self.epAll.keys():
             ret[ep]=await self.endpoint(ep)
+            if ep in keysCacheToKill:
+                keysCacheToKill.remove(ep)
+        for ep in keysCacheToKill:
+            self.epDetail.remove(ep)
+            # Suppression de tout les groupes existant du phone
+            for varName in self.epGrpVar.keys():
+                for varValue in self.epGrpVar[varName]:
+                    if ep in self.epGrpVar[varName][varValue]:
+                        epGrpVar[varName][varValue].remove(ep)
         print(f'☎️  stop')
         return(ret)
 
