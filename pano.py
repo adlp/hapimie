@@ -393,7 +393,7 @@ class Pano:
             if event.name == 'OriginateResponse':
                 print("Channel ID :", event.get('Channel'))
 
-    async def action(self,param=None,MAX_RETRIES=3,RETRY_DELAY=3):
+    async def action(self,param=None,MAX_RETRIES=3,RETRY_DELAY=3,debug=False):
         """
         Envoie une action AMI via Panoramisk et transforme la réponse en dictionnaire(s) nettoyé(s).
         - Supprime les clés inutiles comme 'ActionID'
@@ -408,8 +408,9 @@ class Pano:
             hero={"Action": param}
         else:
             hero={"Action": "ping"}
-    
-        print(f'⚡️ Last Action {hero}')
+
+        if debug:
+            print(f'⚡️ Last Action {hero}')
         await self.wait_for_protocol()
     
         #for attempt in range(1, cfg['MAX_RETRIES'] + 1):
