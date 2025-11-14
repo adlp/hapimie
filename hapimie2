@@ -234,9 +234,14 @@ async def api_endpoints(varSession,params={}):
     if not 'preferred_username' in varSession.keys():
         #raise HTTPException(status_code=403)
         return(None)
-    print('👿 start')
     ret=await asti.endpoints()
-    print('👿 stop')
+    return(ret)
+
+async def api_endpointsGrp(varSession,params={}):
+    if not 'preferred_username' in varSession.keys():
+        #raise HTTPException(status_code=403)
+        return(None)
+    ret=await asti.endpointsGrp()
     return(ret)
 
 #def ligne_view(request: Request, user=Depends(get_user_from_cookie)):
@@ -656,6 +661,7 @@ apiFunc=[
 #    (cfg['API_PATH']+"/endpoints_grps/{varlf}",get_endpoints_grps),
 #    (cfg['API_PATH']+"/endpoints_grps/{varlf}/{vallf}",get_endpoints_grps),
     (f"{cfg['API_PATH']}/endpoints",api_endpoints),
+    (f"{cfg['API_PATH']}/endpointsgrp",api_endpointsGrp),
 #    (f"{cfg['API_PATH']}/myphones",get_myphones),
 #    (f"{cfg['API_PATH']}/trackeur",showtrack),
     ]

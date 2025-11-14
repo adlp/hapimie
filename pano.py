@@ -18,6 +18,8 @@ class Pano:
         self.epAll=self.Cache(self._ep_feedFull,timeout=2)
         self.epDetail={}
         self.epDetailTimeout=60*5
+        self.epGrpVar={}
+        self.epGrpVar["_"]=[]
 
         self.cache=self.Cache(self)
 
@@ -268,29 +270,46 @@ class Pano:
         return(ret)
 
     async def _ep_feedOne(self,command):
-        print('📵')
-        if not command.startswith("PJSIP"):
-            return(None)
-
-        hero={"Action":"PJSIPShowEndpoint","Endpoint": command[6:]}
-        result=await self.action(hero)
+        print('📵 Integration ou Réintegration de poste')
         var={}
-        if 'SetVar' in result[0].keys() and len(result[0]['SetVar']):
-            noinitvarsip=0
-            for ligne in result[0]['SetVar'].split(','):
-                k,v=ligne.split('=',1)
-                var[k]=v
+        if command.startswith("PJSIP"):
+            hero={"Action":"PJSIPShowEndpoint","Endpoint": command[6:]}
+            result=await self.action(hero)
+            if 'SetVar' in result[0].keys() and len(result[0]['SetVar']):
+                noinitvarsip=0
+                for ligne in result[0]['SetVar'].split(','):
+                    k,v=ligne.split('=',1)
+                    var[k]=v
+        ep=command
+        # Suppression de tout les groupes existant du phone
+        for varName in self.epGrpVar.keys():
+            if varName=="_":
+                continue
+            for varValue in self.epGrpVar[varName]:
+                if ep in self.epGrpVar[varName][varValue]:
+                    epGrpVar[varName][varValue].remove(ep)
+        # Rajoute du phone dans tout les groupes existant
+        for k in var.keys():
+            if k not in self.epGrpVar.keys():
+                self.epGrpVar[k]={}
+            if v not in self.epGrpVar[k].keys():
+                self.epGrpVar[k][v]=[]
+            self.epGrpVar[k][v].append(ep)
+        if len(var) == 0:
+            self.epGrpVar["_"].append(command)
+        # Plus c'est bourrin plus c'est bon....
         return(var)
 
     #async def endpoint(self,name):
     async def endpoint(self,ep):
         if ep.startswith('IAX2/'):
+            if ep not in self.epGrpVar["_"]:
+                self.epGrpVar["_"].append(ep)
             return(await self.epAll.get(ep))
         ret={}
         ret=await self.epAll.get(ep)
         if ep not in self.epDetail.keys():
             self.epDetail[ep]=self.Cache(self._ep_feedOne,funcarg=ep,timeout=self.epDetailTimeout)
-        print('🧨 Vars')
         Vars=await self.epDetail[ep].dict()
         ret['Vars']={}
         for k in Vars.keys():
@@ -310,61 +329,13 @@ class Pano:
         print(f'☎️  stop')
         return(ret)
 
-    async def iiendpoints(self,grpbyVar=None):
-        """
-          recupere  tout les endpoints iax/pjsip
-        """
-        # Recuperation, sans cache de la liste de tout les endpoionts pjsip
-        hero="PJSIPShowEndpoints"
-        allend=await self.action(hero)
-        # Recuperation, via cache de toutes les variables de tout les endppoints
-        varsip=fromcache(f"endpointssipvar",{})
-        noinitvarsip=len(varsip)
-        for onened in allend:   # Boucle sur tout les postes
-            ide="PJSIP/"+onened["ObjectName"]
-            ret[ide]={}
-            ret[ide]['ObjectName']=onened["ObjectName"]
-            ret[ide]['Type']="PJSIP"
-            if 'Contacts' in onened.keys() and len(onened['Contacts']):
-                ret[ide]['Contacts']=re.findall(r'@(\d+\.\d+\.\d+\.\d+)',onened['Contacts'])
-# "10003/sip:10003@10.37.0.239:55320;line=9xkpw9m9,10003/sip:10003@10.37.0.239:55320;line=mgpu4zc1,"
-# "antoine/sip:antoine@192.168.0.239:55320;line=9xkpw9m9,antoine/sip:antoine@192.168.0.92:55320;line=mgpu4zc1,"
-# "192.168.0.239" et "192.168.0.92"
-            ret[ide]['Up']=True
-            if onened['DeviceState']=="Unavailable":
-                ret[ide]['Up']=False
-            if ide not in varsip:
-                hero={"Action":"PJSIPShowEndpoint","Endpoint":onened["ObjectName"]}
-                tmp=await self.action(hero)
-                if 'SetVar' in tmp[0].keys() and len(tmp[0]['SetVar']):
-                    noinitvarsip=0
-                    varsip[ide]={}
-                    varsip[ide]['Vars']={}
-                    for ligne in tmp[0]['SetVar'].split(','):
-                        k,v=ligne.split('=',1)
-                        varsip[ide]['Vars'][k]=v
-                else:
-                    varsip[ide]={}
-            ret[ide]['SetVar']=varsip[ide]
-            ret[ide]['Full']=onened
-            if not noinitvarsip:    # Si on considere qu'il faut ecraser le cache...
-                tocache(f"endpointssipvar",varsip,600)
+    async def endpointsGrp(self,grp=None):
+        await self.endpoints()
+        if grp:
+            return({grp:self.epGrpVar[grp]})
+        else:
+            return(self.epGrpVar)
 
-        hero="IAXpeerlist"
-        allend=await self.action(hero)
-        for onened in allend:
-            ide="IAX2/"+onened["ObjectName"]
-            ret[ide]={}
-            ret[ide]['ObjectName']=onened["ObjectName"]
-            ret[ide]['Type']="IAX2"
-            if onened['IPaddress']=="(null)":
-                ret[ide]['Contacts']=onened['IPaddress']
-            ret[ide]['Up']=True
-            if onened['Status']=="UNKNOWN":
-                ret[ide]['Up']=False
-            ret[ide]['Full']=onened
-        tocache('endpoints',ret,3)
-        return(ret)
 
     ####### PROTOCOL !!!!!
     def startup(self):
