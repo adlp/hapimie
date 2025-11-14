@@ -50,21 +50,36 @@
     console.log("Groupe récupérés :", groupe);
     //console.log("Groupes récupérés :", groupes);
 
+
     async function chargerDonnees() {
         const [grpRes, endRes] = await Promise.all([
             fetch("/api/endpointPerGrp").then(r => r.json()),
             fetch("/api/endpoints").then(r => r.json())
         ]);
 
-        const groupes = nom ? grpRes[nom] : {};
-        const endpoints = endRes;
-
         const conteneur = document.getElementById("conteneur");
         conteneur.innerHTML = "";
 
+        if (!nom || nom.trim() === "") {
+            // Afficher les groupes de premier niveau
+            conteneur.innerHTML = "<h2>Choisissez un groupe principal :</h2>";
+            for (const cle of Object.keys(grpRes)) {
+                const lien = document.createElement("a");
+                lien.href = `/endpoints/${encodeURIComponent(cle)}`;
+                lien.textContent = cle;
+                lien.style.display = "block";
+                lien.style.margin = "10px 0";
+                lien.style.fontSize = "18px";
+                conteneur.appendChild(lien);
+            }
+            return;
+        }
+
+        const groupes = grpRes[nom] || {};
+        const endpoints = endRes;
+
         for (const [sousGroupe, postes] of Object.entries(groupes)) {
             if (groupe && sousGroupe !== groupe) continue;
-            console.log("Postes du groupe", sousGroupe, postes);
 
             const bloc = document.createElement("div");
             bloc.className = "groupe";

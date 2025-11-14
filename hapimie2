@@ -186,7 +186,7 @@ def form_help(varSession,params={}):
 
 def form_endpoints(varSession,params={}):
     #return ({'template':'endpoints.html','varSession':varSession})
-    return ({'template':'endpoints.html','nom':params.get('nom',None),"groupe":params.get('groupe',None)})
+    return ({'template':'endpoints.html','nom':params.get('nom',""),"groupe":params.get('groupe',"")})
 
 def form_help_detail(varSession,params={}):
     print('🔎help The detail')
