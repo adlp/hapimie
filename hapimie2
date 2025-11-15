@@ -285,6 +285,17 @@ async def form_queues(varSession,params={}):
     else:
         return({'redirect':'/login'})
 
+async def api_dbGet(varSession,params={}):
+    """
+    On affiche le contenu de la db
+    """
+    if not 'preferred_username' in varSession.keys():
+        #raise HTTPException(status_code=403)
+        return(None)
+    #ret=await asti._feed_db()
+    ret=await asti.db_get()
+    return(ret)
+
 
 #async def dbview(request: Request, user=Depends(get_user_from_cookie)):
 async def dbview(request: Request):
@@ -603,6 +614,7 @@ apiFunc=[
 #    (cfg['API_PATH']+"/endpoints_grps/{varlf}/{vallf}",get_endpoints_grps),
     (f"{cfg['API_PATH']}/endpoints",api_endpoints),
     (f"{cfg['API_PATH']}/endpointPerGrp",api_endpointPerGrp),
+    (f"{cfg['API_PATH']}/dbGet",api_dbGet),
 #    (f"{cfg['API_PATH']}/myphones",get_myphones),
 #    (f"{cfg['API_PATH']}/trackeur",showtrack),
     ]

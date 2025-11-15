@@ -24,6 +24,9 @@ class Pano:
         self._epGrpVar["_"]['All']=[]
         # Queue variables
         self._queues=self.Cache(self._feed_queues,timeout=5)
+        # DBVars
+        self._db=self.Cache(self._feed_db,splitKeyKey="/",timeout=5)
+        self._db_hidden=['/subscription_persistence/','/registrar/','/CustomPresence/','/CustomDevstate/']
 
         #self.cache=self.Cache(self)
 
@@ -402,6 +405,34 @@ class Pano:
             else:
                 # raise
                 print('QUEUE : Event inconnu')
+        return(ret)
+
+    #self._db=self.Cache(self._feed_db,splitKeyKey="/",timeout=5)
+    async def _feed_db(self):
+        resultat={}
+        hero = {"Action": "Command","command": "database show"}
+        resp=await self.action(hero)
+        datas=resp['Output']
+        datas.pop()
+        for ligne in datas:
+            cmd,desc=ligne.split(':',1)
+            chemin=cmd.rstrip()[1:]
+            cles=chemin.split('/')
+            valeur=desc[1:].rstrip()
+            courant = resultat
+            for cle in cles[:-1]:
+                courant=courant.setdefault(cle,{})
+            courant[cles[-1]]=valeur
+        return(resultat)
+
+    async def db_get(self,key=None,hidden=None):
+        print('💽')
+        if not hidden:
+            hidden=self._db_hidden
+
+        ret=await self._db.dict()
+        #result=ret['ASTREINTE']
+        #return(result)
         return(ret)
 
     ####### PROTOCOL !!!!!
