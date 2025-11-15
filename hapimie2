@@ -258,6 +258,13 @@ def form_ligne(varSession,params={}):
     else:
         return({'redirect':'/login'})
 
+async def api_queues(varSession,params={}):
+    if not 'preferred_username' in varSession.keys():
+        #raise HTTPException(status_code=403)
+        return(None)
+    ret=await asti.queues()
+    return(ret)
+
 #@declare_path(app,"get", f"{cfg['API_PATH']}/coreshowchannels")
 #async def get_coreshowchannels():
 #    """
@@ -660,7 +667,7 @@ apiFunc=[
     (f"{cfg['API_PATH']}/help",api_help),
     (cfg['API_PATH']+"/help/{command}",api_help),
     (f"{cfg['API_PATH']}/status",api_status),
-#    (f"{cfg['API_PATH']}/queue",get_queue),
+    (f"{cfg['API_PATH']}/queue",api_queues),
 #    (f"{cfg['API_PATH']}/queue/",get_queue),
 #    (cfg['API_PATH']+"/queue/{queue}",get_queue),
 #    (f"{cfg['API_PATH']}/databaseshow",get_databaseshow),

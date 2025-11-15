@@ -8,6 +8,7 @@ import inspect
 
 class Pano:
     def __init__(self, host="127.0.0.1", port=5038, login="login", password="password"):
+        # TODO prefixer toutes les variables internes d'un _ .... :-/
         # Help variables
         self.helpAll=self.Cache(self._help_feedFull,timeout=None)
         self.helpDetail={}
@@ -17,11 +18,14 @@ class Pano:
         # Endoints variables
         self.epAll=self.Cache(self._ep_feedFull,timeout=2)
         self.epDetail={}
-        self.epDetailTimeout=60*5
+        self.epDetailTimeout=60*30
         self.epGrpVar={}
         self.epGrpVar["_"]={}
         self.epGrpVar["_"]['NoGroup']=[]
         self.epGrpVar["_"]['All']=[]
+        # Queue variables
+        self.queSum=self.Cache(self._feed_queue_summary,timeout=5)
+        self.queDetail=self.Cache(self._feed_queue_detail,timeout=5)
 
         self.cache=self.Cache(self)
 
@@ -45,9 +49,12 @@ class Pano:
                 #print('👻 Generating cache')
                 if self.func:
                     if self.funcarg:
-                        self.cache=await self.func(self.funcarg)
+                        result=await self.func(self.funcarg)
                     else:
-                        self.cache=await self.func()
+                        result=await self.func()
+                    if not result:
+                        result={}
+                    self.cache=result
                 self.timeput=time()
 
         def _getRecursif(self,keys,cache={}):
@@ -289,6 +296,8 @@ class Pano:
                 if ep in self.epGrpVar[varName][varValue]:
                     self.epGrpVar[varName][varValue].remove(ep)
         # Rajoute du phone dans tout les groupes existant
+        # TODO creer un Sous groupe (v) none lorsque 'un poste est nulle part..
+        # Le pb c'est qu'il ne sait pas qu'il est nulle part.... AAAAAHhh
         for k in var.keys():
             v=var[k]
             if k not in self.epGrpVar.keys():
@@ -296,7 +305,7 @@ class Pano:
             if v not in self.epGrpVar[k].keys():
                 self.epGrpVar[k][v]=[]
             self.epGrpVar[k][v].append(ep)
-        if len(var) == 0:
+        if len(var) == 0: # and ep not in self.epGrpVar["_"]["NoGroup"]:
             self.epGrpVar["_"]["NoGroup"].append(ep)
         # Plus c'est bourrin plus c'est bon....
         self.epGrpVar["_"]["All"].append(ep)
@@ -305,7 +314,7 @@ class Pano:
     #async def endpoint(self,name):
     async def endpoint(self,ep):
         if ep.startswith('IAX2/'):
-            if ep not in self.epGrpVar["_"]:
+            if ep not in self.epGrpVar["_"]["NoGroup"]:
                 self.epGrpVar["_"]['NoGroup'].append(ep)
             return(await self.epAll.get(ep))
         ret={}
@@ -348,6 +357,30 @@ class Pano:
         else:
             return(self.epGrpVar)
 
+    async def _feed_queue_summary(self):
+        result=await self.action('QueueSummary')
+        return(result)
+    async def _feed_queue_detail(self):
+        result=await self.action('QueueStatus')
+        return(result)
+
+    async def queues(self):
+        qs=await self.queSum.dict()
+        qd=await self.queDetail.dict()
+        ret={}
+        for queue in qs:
+            queName=queue['Queue']
+            ret[queName]={}
+            ret[queName]['QueueSummary']=queue
+            ret[queName]['QueueMember']={}
+        for member in qd:
+            queName=member['Queue']
+            if member['Event'] == "QueueParams":
+                ret[queName]['QueueParams']=member
+            else:
+                queMember=member['Name']
+                ret[queName]['QueueMember'][queMember]=member
+        return(ret)
 
     ####### PROTOCOL !!!!!
     def startup(self):
