@@ -274,91 +274,17 @@ async def api_queues(varSession,params={}):
 #    return(trichan(await action(hero)))
 
 #async def queue(request: Request, user=Depends(get_user_from_cookie)):
-async def queue(request: Request):
+async def form_queues(varSession,params={}):
     """
     Affichage des queues
     """
-    user = request.session.get("user")
     refresh_interval = 5000  # en millisecondes
-    return templates.TemplateResponse("queue.html", {
-        "request": request,
-        "sentry_dsn": cfg.get("SENTRY_DSN"),
-        "refresh_interval": refresh_interval,
-        "login": user["login"],
-        "gecos": user["gecos"]
-    })
 
-#async def get_queue(user=Depends(get_user_from_cookie),queue:str = None):
-async def get_queue(request: Request):
-    """
-    Affiche le retour combiné de queuestatus et queusummary
-    """
+    if 'preferred_username' in varSession.keys():
+        return ({'template':"queue.html",'varSession': varSession,'template_data':{'refresh_interval':refresh_interval }})
+    else:
+        return({'redirect':'/login'})
 
-    user = request.session.get("user")
-    queueRet=fromcache('Queues',{})
-    if len(queueRet) == 0:
-        statusConverter=['Unknown','Not Inuse','Inuse','Busy','Invalid','Unavailable','Ringing','Ringinuse','Onhold']
-        hero='QueueStatus'
-        allm=await action(hero)
-        for bloc in allm:
-            if 'Queue' not in bloc:
-                continue
-            quenom=bloc['Queue']
-            if quenom not in queueRet.keys():
-                queueRet[quenom]={}
-                queueRet[quenom]["QueueEntry"]={}
-                queueRet[quenom]["QueueMember"]={}
-    
-            if bloc['Event'] == "QueueParams":
-                queueRet[quenom]['QueueParams']=bloc
-            elif bloc['Event'] == "QueueEntry":
-                queueRet[quenom]["QueueEntry"][bloc['Channel']]=bloc
-            elif bloc['Event'] == "QueueMember":
-                queueRet[quenom]["QueueMember"][bloc["Name"]]=bloc
-            elif allmembers:
-                queueRet[quenom]["FallDown"].append(bloc)
-    
-        hero='QueueSummary'
-        allm=await action(hero)
-        for bloc in allm:
-            quenom=bloc['Queue']
-            #queueRet[quenom]['QueueParams']["LoggedIn"]=bloc
-            queueRet[quenom]['QueueParams']["LoggedIn"]=bloc['LoggedIn']
-            queueRet[quenom]['QueueParams']["Available"]=bloc['Available']
-            queueRet[quenom]['QueueParams']["Callers"]=bloc['Callers']
-            queueRet[quenom]['QueueParams']["LongestHoldTime"]=bloc['LongestHoldTime']
-            queueRet[quenom]['QueueParams']["content"]+='/'+bloc['content']
-            del(queueRet[quenom]['QueueParams']['Event'])
-            for phone in queueRet[quenom]["QueueMember"]:
-                del(queueRet[quenom]["QueueMember"][phone]['Event'])
-                del(queueRet[quenom]["QueueMember"][phone]['Queue'])
-                del(queueRet[quenom]["QueueMember"][phone]['Name'])
-                queueRet[quenom]["QueueMember"][phone]['_Status']=statusConverter[int(queueRet[quenom]["QueueMember"][phone]['Status'])]
-                if queueRet[quenom]["QueueMember"][phone]['Paused']=="1":
-                    queueRet[quenom]["QueueMember"][phone]['_Status']+="/Pause"
-                if queueRet[quenom]["QueueMember"][phone]['LastCall'] != "0":
-                    tmp=queueRet[quenom]["QueueMember"][phone]['LastCall']
-                    queueRet[quenom]["QueueMember"][phone]['LastCall']=format_epoch(int(tmp))
-                else:
-                    queueRet[quenom]["QueueMember"][phone]['LastCall']="None"
-                if queueRet[quenom]["QueueMember"][phone]['LastPause'] != "0":
-                    tmp=queueRet[quenom]["QueueMember"][phone]['LastPause']
-                    queueRet[quenom]["QueueMember"][phone]['LastPause']=format_epoch(int(tmp))
-                else:
-                    queueRet[quenom]["QueueMember"][phone]['LastPause']="None"
-                if queueRet[quenom]["QueueMember"][phone]['LoginTime'] != "0":
-                    tmp=queueRet[quenom]["QueueMember"][phone]['LoginTime']
-                    queueRet[quenom]["QueueMember"][phone]['LoginTime']=format_epoch(int(tmp))
-                else:
-                    queueRet[quenom]["QueueMember"][phone]['LoginTime']="None"
-        tocache('Queues',queueRet)
-
-    if len(user['login'])==0:
-        queue="santeol-poc"
-    if queue is not None:
-        return({queue: queueRet[queue]})
-
-    return(queueRet)
 
 #async def dbview(request: Request, user=Depends(get_user_from_cookie)):
 async def dbview(request: Request):
@@ -657,6 +583,7 @@ webFunc=[
     ("/endpoints",form_endpoints),
     ("/endpoints/{nom}",form_endpoints),
     ("/endpoints/{nom}/{groupe}",form_endpoints),
+    ("/queue",form_queues),
 #    ("/queue", queue),
 #    ("/dbview",dbview),
 #    ("/endpoints", endpoints_view),

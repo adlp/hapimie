@@ -2,9 +2,8 @@
 from panoramisk.manager import Manager
 import asyncio
 from time import time #, sleep
+from datetime import datetime
 import inspect
-
-
 
 class Pano:
     def __init__(self, host="127.0.0.1", port=5038, login="login", password="password"):
@@ -24,8 +23,7 @@ class Pano:
         self.epGrpVar["_"]['NoGroup']=[]
         self.epGrpVar["_"]['All']=[]
         # Queue variables
-        self.queSum=self.Cache(self._feed_queue_summary,timeout=5)
-        self.queDetail=self.Cache(self._feed_queue_detail,timeout=5)
+        self._queues=self.Cache(self._feed_queues,timeout=5)
 
         self.cache=self.Cache(self)
 
@@ -357,29 +355,53 @@ class Pano:
         else:
             return(self.epGrpVar)
 
-    async def _feed_queue_summary(self):
-        result=await self.action('QueueSummary')
-        return(result)
-    async def _feed_queue_detail(self):
-        result=await self.action('QueueStatus')
-        return(result)
+    def _format_epoch(self,epoch=int(datetime.now().timestamp())):
+        if epoch==0:
+            return(0)
+        # Si le timestamp est en millisecondes, on le convertit en secondes
+        if epoch > 1e12:
+            epoch = epoch / 1000
+    
+        dt = datetime.fromtimestamp(epoch)
+        return dt.strftime("%d/%m/%Y %H:%M:%S")
 
     async def queues(self):
-        qs=await self.queSum.dict()
-        qd=await self.queDetail.dict()
+        print('🐍')
+        return(await self._queues.dict())
+
+    async def _feed_queues(self):
         ret={}
-        for queue in qs:
+        statusConverter=['Unknown','Not Inuse','Inuse','Busy','Invalid','Unavailable','Ringing','Ringinuse','Onhold']
+        for queue in await self.action('QueueSummary'):
             queName=queue['Queue']
             ret[queName]={}
-            ret[queName]['QueueSummary']=queue
+            for k in ['Event','Queue']:
+                del(queue[k])
+            ret[queName]['QueueEntry']={}
+            ret[queName]['QueueParams']=queue
             ret[queName]['QueueMember']={}
-        for member in qd:
-            queName=member['Queue']
-            if member['Event'] == "QueueParams":
-                ret[queName]['QueueParams']=member
+        for bloc in await self.action('QueueStatus'):
+            queName=bloc['Queue']
+            if bloc['Event'] == "QueueEntry":
+                ret[queName]['QueueEntry'][bloc['Channel']]=bloc
+            elif bloc['Event'] == "QueueMember":
+                bloc['_Status']=statusConverter[int(bloc['Status'])]
+                if bloc['Paused']=="1":
+                    bloc['_Status']+="/Pause"
+                for k in ['LastCall','LastPause','LoginTime']:
+                    bloc[k]= self._format_epoch(int(bloc[k]))
+                for k in ['Event','Queue']:
+                    del(bloc[k])
+                ret[queName]['QueueMember'][bloc['Name']]=bloc
+            elif bloc['Event'] == "QueueParams":
+                for k in bloc.keys():
+                    if k in ['Event','content','Queue']:
+                        continue
+                    ret[queName]['QueueParams'][k]=bloc[k]
+                ret[queName]['QueueParams']['content']+="/"+bloc['content']
             else:
-                queMember=member['Name']
-                ret[queName]['QueueMember'][queMember]=member
+                # raise
+                print('QUEUE : Event inconnu')
         return(ret)
 
     ####### PROTOCOL !!!!!
