@@ -9,27 +9,27 @@ class Pano:
     def __init__(self, host="127.0.0.1", port=5038, login="login", password="password"):
         # TODO prefixer toutes les variables internes d'un _ .... :-/
         # Help variables
-        self.helpAll=self.Cache(self._help_feedFull,timeout=None)
-        self.helpDetail={}
-        self.helpDetailTimeout=None
+        self._helpAll=self.Cache(self._help_feedFull,timeout=None)
+        self._helpDetail={}
+        self._helpDetailTimeout=None
         # Channels variables
-        self.channelCache=self.Cache(self._chan_feed,timeout=1)
+        self._channelCache=self.Cache(self._chan_feed,timeout=1)
         # Endoints variables
-        self.epAll=self.Cache(self._ep_feedFull,timeout=2)
-        self.epDetail={}
-        self.epDetailTimeout=60*30
-        self.epGrpVar={}
-        self.epGrpVar["_"]={}
-        self.epGrpVar["_"]['NoGroup']=[]
-        self.epGrpVar["_"]['All']=[]
+        self._epAll=self.Cache(self._ep_feedFull,timeout=2)
+        self._epDetail={}
+        self._epDetailTimeout=60*30
+        self._epGrpVar={}
+        self._epGrpVar["_"]={}
+        self._epGrpVar["_"]['NoGroup']=[]
+        self._epGrpVar["_"]['All']=[]
         # Queue variables
         self._queues=self.Cache(self._feed_queues,timeout=5)
 
-        self.cache=self.Cache(self)
+        #self.cache=self.Cache(self)
 
-        self.trackeurAMI={}
-        self.trackeurAMI['Originate']={}
-        self.manager = Manager(host=host,port=port,username=login,secret=password,forgetable_actions=('login',))
+        self._trackeurAMI={}
+        self._trackeurAMI['Originate']={}
+        self._manager = Manager(host=host,port=port,username=login,secret=password,forgetable_actions=('login',))
 
     class Cache:
         def __init__(self,func: callable=None,funcarg=None,defaultValue=None,splitKeyKey=None,timeout=5):
@@ -154,24 +154,24 @@ class Pano:
 
     async def help(self,key):
         print('🦆 gt Help')
-        #if not len(await self.helpAll.keys()): # On force un reload
-        #    self.helpAll=self.Cache(self._help_feedFull,timeout=600)
+        #if not len(await self._helpAll.keys()): # On force un reload
+        #    self._helpAll=self.Cache(self._help_feedFull,timeout=600)
 
         if not key:
             print('🦆 gt Help None')
-            return(await self.helpAll.dict())
+            return(await self._helpAll.dict())
 
-        if key not in self.helpDetail.keys():
-            self.helpDetail[key]=self.Cache(self._help_feedOne,funcarg=key,timeout=self.helpDetailTimeout)
-        return(await self.helpDetail[key].dict())
+        if key not in self._helpDetail.keys():
+            self._helpDetail[key]=self.Cache(self._help_feedOne,funcarg=key,timeout=self._helpDetailTimeout)
+        return(await self._helpDetail[key].dict())
 
     async def help_keys(self):
         print('🦆 ke Help D')
-        #if not len(await self.helpAll.keys()): # On force un reload
-        #    self.helpAll=self.Cache(self._help_feedFull,timeout=600)
-        print(self.helpAll)
+        #if not len(await self._helpAll.keys()): # On force un reload
+        #    self._helpAll=self.Cache(self._help_feedFull,timeout=600)
+        print(self._helpAll)
         print('🦆 ke Help E')
-        return(await self.helpAll.keys())
+        return(await self._helpAll.keys())
 
 
     async def _chan_feed(self):
@@ -235,7 +235,7 @@ class Pano:
             En rajoutant des aides et de l'usage du cache
             Renvoie le status.... hmmmm ca ressemble a un coreshowchannel
         """
-        return(await self.channelCache.dict())
+        return(await self._channelCache.dict())
 
     async def channel_del(self,channelid=None):
         hero={'action':'HangUp', 'Channel': channelid,'Cause': 'API Call' }
@@ -289,37 +289,37 @@ class Pano:
                     var[k]=v
         ep=command
         # Suppression de tout les groupes existant du phone
-        for varName in self.epGrpVar.keys():
-            for varValue in self.epGrpVar[varName]:
-                if ep in self.epGrpVar[varName][varValue]:
-                    self.epGrpVar[varName][varValue].remove(ep)
+        for varName in self._epGrpVar.keys():
+            for varValue in self._epGrpVar[varName]:
+                if ep in self._epGrpVar[varName][varValue]:
+                    self._epGrpVar[varName][varValue].remove(ep)
         # Rajoute du phone dans tout les groupes existant
         # TODO creer un Sous groupe (v) none lorsque 'un poste est nulle part..
         # Le pb c'est qu'il ne sait pas qu'il est nulle part.... AAAAAHhh
         for k in var.keys():
             v=var[k]
-            if k not in self.epGrpVar.keys():
-                self.epGrpVar[k]={}
-            if v not in self.epGrpVar[k].keys():
-                self.epGrpVar[k][v]=[]
-            self.epGrpVar[k][v].append(ep)
-        if len(var) == 0: # and ep not in self.epGrpVar["_"]["NoGroup"]:
-            self.epGrpVar["_"]["NoGroup"].append(ep)
+            if k not in self._epGrpVar.keys():
+                self._epGrpVar[k]={}
+            if v not in self._epGrpVar[k].keys():
+                self._epGrpVar[k][v]=[]
+            self._epGrpVar[k][v].append(ep)
+        if len(var) == 0: # and ep not in self._epGrpVar["_"]["NoGroup"]:
+            self._epGrpVar["_"]["NoGroup"].append(ep)
         # Plus c'est bourrin plus c'est bon....
-        self.epGrpVar["_"]["All"].append(ep)
+        self._epGrpVar["_"]["All"].append(ep)
         return(var)
 
     #async def endpoint(self,name):
     async def endpoint(self,ep):
         if ep.startswith('IAX2/'):
-            if ep not in self.epGrpVar["_"]["NoGroup"]:
-                self.epGrpVar["_"]['NoGroup'].append(ep)
-            return(await self.epAll.get(ep))
+            if ep not in self._epGrpVar["_"]["NoGroup"]:
+                self._epGrpVar["_"]['NoGroup'].append(ep)
+            return(await self._epAll.get(ep))
         ret={}
-        ret=await self.epAll.get(ep)
-        if ep not in self.epDetail.keys():
-            self.epDetail[ep]=self.Cache(self._ep_feedOne,funcarg=ep,timeout=self.epDetailTimeout)
-        Vars=await self.epDetail[ep].dict()
+        ret=await self._epAll.get(ep)
+        if ep not in self._epDetail.keys():
+            self._epDetail[ep]=self.Cache(self._ep_feedOne,funcarg=ep,timeout=self._epDetailTimeout)
+        Vars=await self._epDetail[ep].dict()
         ret['Vars']={}
         for k in Vars.keys():
             ret['Vars'][k]=Vars[k]
@@ -327,23 +327,23 @@ class Pano:
 
     async def endpoints(self):
         #print('☎️  start')
-        #if not len(self.epAll):
-        #    self.epAll=self.Cache(self._ep_feedFull,timeout=10)
-        #print(await self.epAll.dict())
+        #if not len(self._epAll):
+        #    self._epAll=self.Cache(self._ep_feedFull,timeout=10)
+        #print(await self._epAll.dict())
 
-        result=await self.epAll.dict()
+        result=await self._epAll.dict()
         ret={}
-        keysCacheToKill=list(self.epDetail.keys())
-        for ep in await self.epAll.keys():
+        keysCacheToKill=list(self._epDetail.keys())
+        for ep in await self._epAll.keys():
             ret[ep]=await self.endpoint(ep)
             if ep in keysCacheToKill:
                 keysCacheToKill.remove(ep)
         for ep in keysCacheToKill:
-            self.epDetail.remove(ep)
+            self._epDetail.remove(ep)
             # Suppression de tout les groupes existant du phone
-            for varName in self.epGrpVar.keys():
-                for varValue in self.epGrpVar[varName]:
-                    if ep in self.epGrpVar[varName][varValue]:
+            for varName in self._epGrpVar.keys():
+                for varValue in self._epGrpVar[varName]:
+                    if ep in self._epGrpVar[varName][varValue]:
                         epGrpVar[varName][varValue].remove(ep)
         #print(f'☎️  stop')
         return(ret)
@@ -351,9 +351,9 @@ class Pano:
     async def endpointsGrp(self,grp=None):
         await self.endpoints()
         if grp:
-            return({grp:self.epGrpVar[grp]})
+            return({grp:self._epGrpVar[grp]})
         else:
-            return(self.epGrpVar)
+            return(self._epGrpVar)
 
     def _format_epoch(self,epoch=int(datetime.now().timestamp())):
         if epoch==0:
@@ -407,8 +407,8 @@ class Pano:
     ####### PROTOCOL !!!!!
     def startup(self):
         print("Connexion a l'AMI")
-        self.manager.register_event('*', self.on_event_OriginateResponse)
-        self.manager.connect()
+        self._manager.register_event('*', self.on_event_OriginateResponse)
+        self._manager.connect()
 
     async def wait_for_protocol(self):
         """
@@ -416,7 +416,7 @@ class Pano:
         """
         #for i in range(20):  # max 2 secondes
         for i in range(5):  # max 2 secondes
-            if self.manager.protocol:
+            if self._manager.protocol:
                 return
             print(f"Reconnexion a l'AMI {i}")
             await asyncio.sleep(0.2)
@@ -430,13 +430,13 @@ class Pano:
         #    print(trackeurAMI)
         #    print(event)
     
-        if event.event == "Hangup" and isinstance(event.Uniqueid, str) and event.Uniqueid in self.trackeurAMI['Originate']:
+        if event.event == "Hangup" and isinstance(event.Uniqueid, str) and event.Uniqueid in self._trackeurAMI['Originate']:
             print(f"Événement : {event.event} END")
-            del(self.trackeurAMI['Originate'][event.Uniqueid])
+            del(self._trackeurAMI['Originate'][event.Uniqueid])
     
-        if event.event == 'Newchannel' and isinstance(event.Uniqueid, str) and event.Uniqueid in self.trackeurAMI['Originate']:
+        if event.event == 'Newchannel' and isinstance(event.Uniqueid, str) and event.Uniqueid in self._trackeurAMI['Originate']:
             print(f"Événement : {event.event} FOUNDING")
-            self.trackeurAMI['Originate'][event.Uniqueid]['Channel']=event.Channel
+            self._trackeurAMI['Originate'][event.Uniqueid]['Channel']=event.Channel
     
         #if event.Uniqueid in trackeurAMI['Originate'].keys():
         #    print(f"Événement : {event.event}")
@@ -471,18 +471,18 @@ class Pano:
         #for attempt in range(1, cfg['MAX_RETRIES'] + 1):
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                response = await asyncio.wait_for(self.manager.send_action(hero), timeout=RETRY_DELAY)
+                response = await asyncio.wait_for(self._manager.send_action(hero), timeout=RETRY_DELAY)
                 #print(f"👽️ Last action hero {hero}")
                 break
             except (asyncio.TimeoutError, ConnectionError) as e:
                 print(f"⚠️ Tentative {attempt} échouée : {e}")
                 if attempt < MAX_RETRIES:
                     print(f"⏳ Nouvelle tentative dans {RETRY_DELAY} secondes...")
-                    self.manager.close()
+                    self._manager.close()
                     await asyncio.sleep(RETRY_DELAY/2)
                     #manager.register_event('OriginateResponse', on_event_OriginateResponse)
-                    self.manager.register_event('*', self.on_event_OriginateResponse)
-                    self.manager.connect()
+                    self._manager.register_event('*', self.on_event_OriginateResponse)
+                    self._manager.connect()
                     await asyncio.sleep(RETRY_DELAY/2)
                 else:
                     print("💥 Plantage après 3 tentatives.")
