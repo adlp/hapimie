@@ -292,7 +292,6 @@ async def api_dbGet(varSession,params={}):
     if not 'preferred_username' in varSession.keys():
         #raise HTTPException(status_code=403)
         return(None)
-    #ret=await asti._feed_db()
     key=params.get('path',None)
     ret=await asti.db_get(key)
     return(ret)

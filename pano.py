@@ -439,15 +439,12 @@ class Pano:
             for cle in cles:
                 if isinstance(courant,dict) and cle in courant:
                     courant=courant[cle]
-                else:
+                elif cle not in courant:
                     return(None)
-            return(courant)
+            return({ key:courant})
         else:
-            return(ret[key])
+            return({ key:ret[key]})
 
-        #result=ret['ASTREINTE']
-        #return(result)
-        return(ret)
 
     ####### PROTOCOL !!!!!
     def startup(self):
