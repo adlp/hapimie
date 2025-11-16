@@ -26,7 +26,7 @@ class Pano:
         self._queues=self.Cache(self._feed_queues,timeout=5)
         # DBVars
         self._db=self.Cache(self._feed_db,splitKeyKey="/",timeout=5)
-        self._db_hidden=['/subscription_persistence/','/registrar/','/CustomPresence/','/CustomDevstate/']
+        self._db_hidden=['subscription_persistence','registrar','CustomPresence','CustomDevstate','pbx']
 
         #self.cache=self.Cache(self)
 
@@ -427,11 +427,16 @@ class Pano:
 
     async def db_get(self,key=None,hidden=None):
         print('💽')
-        if not hidden:
-            hidden=self._db_hidden
 
         ret=await self._db.dict()
         if key is None:
+            print('🔐')
+            if not hidden:
+                hidden=self._db_hidden
+            for k in hidden:
+                if k in ret:
+                    del(ret[k])
+
             return(ret)
         elif "/" in key:
             cles=key.split('/')
