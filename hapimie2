@@ -293,7 +293,8 @@ async def api_dbGet(varSession,params={}):
         #raise HTTPException(status_code=403)
         return(None)
     #ret=await asti._feed_db()
-    ret=await asti.db_get()
+    key=params.get('path',None)
+    ret=await asti.db_get(key)
     return(ret)
 
 
@@ -615,6 +616,7 @@ apiFunc=[
     (f"{cfg['API_PATH']}/endpoints",api_endpoints),
     (f"{cfg['API_PATH']}/endpointPerGrp",api_endpointPerGrp),
     (f"{cfg['API_PATH']}/dbGet",api_dbGet),
+    (f"{cfg['API_PATH']}/dbGet/"+"{path:path}",api_dbGet),
 #    (f"{cfg['API_PATH']}/myphones",get_myphones),
 #    (f"{cfg['API_PATH']}/trackeur",showtrack),
     ]

@@ -431,6 +431,20 @@ class Pano:
             hidden=self._db_hidden
 
         ret=await self._db.dict()
+        if key is None:
+            return(ret)
+        elif "/" in key:
+            cles=key.split('/')
+            courant=ret
+            for cle in cles:
+                if isinstance(courant,dict) and cle in courant:
+                    courant=courant[cle]
+                else:
+                    return(None)
+            return(courant)
+        else:
+            return(ret[key])
+
         #result=ret['ASTREINTE']
         #return(result)
         return(ret)
