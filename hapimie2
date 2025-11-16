@@ -391,7 +391,7 @@ webFunc=[
     ("/endpoints/{nom}/{groupe}",form_endpoints),
     ("/queue",form_queues),
 #    ("/queue", queue),
-#    ("/dbview",dbview),
+    ("/dbview",form_dbview),
 #    ("/endpoints", endpoints_view),
 #    ("/dial", dial_page),
     ("/favicon.ico",funNull),

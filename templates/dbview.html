@@ -4,147 +4,188 @@
 
 {% block content %}
 <h1>🗂️ Éditeur de base de données</h1>
-<table border="1" cellpadding="2" id="db-table">
-  <thead>
-    <tr><th>Clé</th><th>Valeur</th></tr>
-  </thead>
-  <tbody id="db-body">
-    <tr><td colspan="2">Chargement...</td></tr>
-  </tbody>
-</table>
 
-<div id="popup" class="popup" style="display:none;">
-  <span class="popup-close" onclick="closePopup()">❌</span>
-  <h3>Résultat</h3>
-  <pre id="popup-content"></pre>
+<input type="text" id="search" placeholder="🔍 Rechercher une clé ou une valeur..." style="width: 100%; padding: 8px; margin-bottom: 20px; font-size: 16px;">
+
+<div id="tree-container"></div>
+
+<div id="popup" class="popup">
+    <span class="popup-close" onclick="document.getElementById('popup').style.display='none'">X</span>
+    <pre id="popup-content"></pre>
 </div>
 
 <style>
-  .popup {
-    position: fixed;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    background: white;
-    border: 2px solid #444;
-    padding: 20px;
-    z-index: 1000;
-    box-shadow: 0 0 10px rgba(0,0,0,0.3);
-    max-width: 600px;
-    max-height: 80vh;
-    overflow-y: auto;
-    border-radius: 8px;
-  }
-td, th {
-  padding: 2px 6px; /* moins d'espace intérieur */
-  font-size: 0.85em; /* texte plus petit */
-  line-height: 1.1;
-}
-
-td:nth-child(1) {
-  white-space: normal;      /* Autorise les retours à la ligne */
-  word-break: break-word;   /* Coupe les mots longs si nécessaire */
-  max-width: 300px;         /* Optionnel : limite la largeur */
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  width: auto;
-  white-space: normal;
-  word-break: break-word;
-}
-
-td:nth-child(2) {
-  width: 300px; /* champ de saisie plus petit */
-  white-space: normal;      /* Autorise les retours à la ligne */
-  word-break: break-word;   /* Coupe les mots longs si nécessaire */
-  max-width: 400px;         /* Optionnel : limite la largeur */
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-#db-table {
-  font-size: 0.85em;
-  width: auto;
-  border-collapse: collapse;
-}
-.endpoint-item {
-  padding: 4px;
-  margin: 2px;
-}
-table {
-  border-collapse: collapse;
-  table-layout: auto;
-  width: 100%;
-}
-
-tr {
-  margin: 0;
-  padding: 0;
-}
-
-
+    .node {
+        margin-left: 20px;
+        padding: 5px;
+        border-left: 1px solid #ccc;
+    }
+    .key {
+        font-weight: bold;
+        margin-right: 10px;
+    }
+    .leaf {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 5px 0;
+        flex-wrap: wrap;
+    }
+    input[type="text"] {
+        padding: 4px;
+        font-size: 14px;
+        min-width: 150px;
+    }
+    button {
+        padding: 4px 8px;
+        font-size: 13px;
+        cursor: pointer;
+    }
+    .branch-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 10px 0;
+    }
+    .popup {
+        position: fixed;
+        top: 20%;
+        left: 30%;
+        width: 40%;
+        background: #fff;
+        border: 2px solid #333;
+        padding: 20px;
+        display: none;
+        z-index: 1000;
+    }
+    .popup-close {
+        float: right;
+        cursor: pointer;
+        font-weight: bold;
+    }
+    @media (max-width: 600px) {
+        .leaf {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+    }
 </style>
 
 <script>
-  async function loadDatabase() {
-    const res = await fetch("/api/databaseshow");
-    const data = await res.json();
-    const tbody = document.getElementById("db-body");
-    tbody.innerHTML = "";
+    async function fetchData() {
+        const res = await fetch("/api/dbGet");
+        const data = await res.json();
+        const container = document.getElementById("tree-container");
+        container.innerHTML = "";
+        renderTree(data, [], container);
+    }
 
-    Object.entries(data).forEach(([key, value]) => {
-      const row = document.createElement("tr");
+    function renderTree(obj, path, container) {
+        for (const key in obj) {
+            const fullPath = [...path, key];
+            const value = obj[key];
+            const node = document.createElement("div");
+            node.className = "node";
 
-      // Colonne clé + lien suppression
-      const keyCell = document.createElement("td");
-      keyCell.innerHTML = `
-        ${key}<a href="#" onclick="deleteKey('${key}'); return false;">🗑️ Supprimer</a>`;
-      row.appendChild(keyCell);
+            if (typeof value === "string") {
+                const leaf = document.createElement("div");
+                leaf.className = "leaf";
 
-      // Colonne valeur + champ + lien mise à jour
-      const valCell = document.createElement("td");
-      valCell.innerHTML = `
-        <input type="text" id="val-${key}" value="${value}" style="width:70%;">
-        <a href="#" onclick="updateKey('${key}'); return false;">💾 Maj</a>
-      `;
-      row.appendChild(valCell);
+                const label = document.createElement("span");
+                label.className = "key";
+                label.textContent = key;
 
-      tbody.appendChild(row);
-    });
-  }
+                const input = document.createElement("input");
+                input.type = "text";
+                input.value = value;
 
-  async function deleteKey(key) {
-    const res = await fetch("/api/dbDel", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ Attribut: key })
-    });
-    const result = await res.json();
-    showPopup(result);
-    await loadDatabase();
-  }
+                const saveBtn = document.createElement("button");
+                saveBtn.textContent = "Modifier";
+                saveBtn.onclick = () => {
+                    fetch("/api/dbPut", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            path: fullPath.join("/"),
+                            value: input.value
+                        })
+                    }).then(() => alert("✅ Valeur modifiée"));
+                };
 
-  async function updateKey(key) {
-    const newVal = document.getElementById(`val-${key}`).value;
-    const res = await fetch("/api/dbPut", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ Attribut: key, Val: newVal })
-    });
-    const result = await res.json();
-    showPopup(result);
-    await loadDatabase();
-  }
+                const delBtn = document.createElement("button");
+                delBtn.textContent = "🗑️ Supprimer";
+                delBtn.onclick = () => {
+                    if (confirm("Confirmer la suppression de cette feuille ?")) {
+                        fetch("/api/dbDel", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ path: fullPath.join("/") })
+                        }).then(() => {
+                            alert("🗑️ Feuille supprimée");
+                            leaf.remove();
+                        });
+                    }
+                };
 
-  function showPopup(data) {
-    document.getElementById("popup-content").textContent = JSON.stringify(data, null, 2);
-    document.getElementById("popup").style.display = "block";
-  }
+                leaf.appendChild(label);
+                leaf.appendChild(input);
+                leaf.appendChild(saveBtn);
+                leaf.appendChild(delBtn);
+                node.appendChild(leaf);
+            } else if (typeof value === "object") {
+                const header = document.createElement("div");
+                header.className = "branch-header";
 
-  function closePopup() {
-    document.getElementById("popup").style.display = "none";
-  }
+                const label = document.createElement("span");
+                label.className = "key";
+                label.textContent = key;
 
-  loadDatabase();
+                const toggleBtn = document.createElement("button");
+                toggleBtn.textContent = "↕";
+                toggleBtn.onclick = () => {
+                    subtree.style.display = subtree.style.display === "none" ? "block" : "none";
+                };
+
+                const delBtn = document.createElement("button");
+                delBtn.textContent = "🗑️ Supprimer branche";
+                delBtn.onclick = () => {
+                    if (confirm("Confirmer la suppression de cette branche ?")) {
+                        fetch("/api/dbDel", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ path: fullPath.join("/") })
+                        }).then(() => {
+                            alert("🗑️ Branche supprimée");
+                            node.remove();
+                        });
+                    }
+                };
+
+                header.appendChild(label);
+                header.appendChild(toggleBtn);
+                header.appendChild(delBtn);
+                node.appendChild(header);
+
+                const subtree = document.createElement("div");
+                subtree.className = "node";
+                subtree.style.display = "none"; // 👈 branche repliée par défaut
+                renderTree(value, fullPath, subtree);
+                node.appendChild(subtree);
+
+
+            }
+
+            container.appendChild(node);
+        }
+    }
+
+    document.getElementById("search").oninput = function() {
+        const term = this.value.toLowerCase();
+        document.querySelectorAll(".node").forEach(node => {
+            node.style.display = node.textContent.toLowerCase().includes(term) ? "block" : "none";
+        });
+    };
+
+    fetchData();
 </script>
 {% endblock %}
-
