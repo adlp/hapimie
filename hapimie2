@@ -5,28 +5,8 @@
 # Licensed under the EUPL v.1.2
 # See LICENSE file or https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12
 
-#from fastapi import FastAPI, Request, Depends, HTTPException
-#from fastapi.responses import HTMLResponse
-#from fastapi.templating import Jinja2Templates
-#from fastapi.security import OAuth2PasswordBearer
-#from fastapi.openapi.docs import get_swagger_ui_html
-#from datetime import datetime, timedelta
-#import uvicorn
-# pip install fastapi-simple-oidc
-#from fastapi_simple_oidc import OIDCAuth, OIDCUser
-#from fastapi.responses import RedirectResponse
-
-
 from pano import Pano
 from zapiz import Zapiz
-
-from fastapi import FastAPI, Request, Depends, HTTPException
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
-from fastapi.security import OAuth2PasswordBearer
-from fastapi.openapi.docs import get_swagger_ui_html
-
-
 
 import os,argparse,sys,configparser
 
@@ -125,9 +105,6 @@ def home(varSession,params={}):
 
     return ({'template':"welcome.html",'varSession': varSession })
 
-#def form_view(request: Request, user=Depends(get_user_from_cookie),nom: str = None):
-#def form_view(request: Request, nom: str = None):
-#def form_view(varSession,*args,**kwargs):
 def form_view(varSession,params={}):
     #varSession={}
     print(varSession)
@@ -145,19 +122,6 @@ def form_view(varSession,params={}):
     else:
         return({'redirect':'/login'})
 
-#async def show_cache(request: Request,user=Depends(get_user_from_cookie),nom: str = None):
-async def show_cache(request: Request,nom: str = None):
-    user = request.session.get("user")
-    return(cache)
-
-##async def get_help_stx(command: str = None):
-#async def get_help_stx(varSession,params={}):
-#    command=params.get("command",None)
-#    ret=await asti.help_stx(command)
-#    return ( ret  )
-
-#async def help_exec(request: Request,user=Depends(get_user_from_cookie),nom: str = None):
-#async def help_exec(request: Request,nom: str = None):
 async def api_help_exec(varSession,params={}):
     #form = await request.form()
     #user = request.session.get("user")
@@ -298,25 +262,22 @@ async def api_dbGet(varSession,params={}):
 
 
 #async def dbview(request: Request, user=Depends(get_user_from_cookie)):
-async def dbview(request: Request):
+async def form_dbview(varSession,params={}):
     """
     Affichage pour lecture, modification et suppression d'enregistrement dans la DB d'Asterisk
     """
-    user = request.session.get("user")
-    return templates.TemplateResponse("dbview.html", {
-        "request": request,
-        "login": user["login"],
-        "sentry_dsn": cfg.get("SENTRY_DSN"),
-        "gecos": user["gecos"]
-    })
+    if 'preferred_username' in varSession.keys():
+        return ({'template':"dbview.html",'varSession': varSession})
+    else:
+        return({'redirect':'/login'})
 
 #async def db_put(request: Request,user=Depends(get_user_from_cookie)):
-async def db_put(request: Request):
-    form = await request.form()
-    user = request.session.get("user")
+async def api_dbPut(varSession,params={}):
     data = dict(form)
     data["Action"] = form.get("Action")
 
+    if 'preferred_username' not in varSession.keys():
+        return(None)
     family, key = data['Attribut'].split("/", 1)
     hero={'Action':'DbPut','family':family,'key':key,'val':data['Val']}
     if len(user['login']):
@@ -342,7 +303,7 @@ async def db_put(request: Request):
     return(response)
 
 #async def db_del(request: Request,user=Depends(get_user_from_cookie)):
-async def db_del(request: Request):
+async def api_Dbdel(varSession,params={}):
     form = await request.form()
     user = request.session.get("user")
     data = dict(form)
@@ -373,181 +334,15 @@ async def db_del(request: Request):
 
     return(response)
 
-#async def get_databaseshow(user=Depends(get_user_from_cookie)):
-async def get_databaseshow(request: Request):
-    """
-    Equivalant de "database show" dans la CLI avec suppression de familles
-    Familles supprimées : 
-        - /subscription_persistence/
-        - /registrar/
-        - /CustomPresence/
-        - /CustomDevstate/
-    """
-    user = request.session.get("user")
-    if len(user['login']) == 0:
-        return({})
-
-    ret=fromcache('database',{})
-    if len(ret) == 0:
-        hero = {"Action": "Command","command": "database show"}
-        resp=await action(hero)
-        ret={}
-        datas=resp['Output']
-        datas.pop()
-        for ligne in datas:
-            cmd,desc=decoupe_lexique(ligne)
-            if cmd.startswith('/subscription_persistence/'):
-                continue
-            elif cmd.startswith('/registrar/'):
-                continue
-            elif cmd.startswith('/CustomPresence/'):
-                continue
-            elif cmd.startswith('/CustomDevstate/'):
-                continue
-    
-            ret[cmd[1:]]=desc[2:]
-        tocache('database',ret,1)
-    return(ret)
-
-#def endpoints_view(request: Request, user=Depends(get_user_from_cookie), refresh: int = 5):
-def endpoints_view(request: Request, refresh: int = 5):
-    """
-    Affichage des endpoints
-    """
-    user = request.session.get("user")
-    return templates.TemplateResponse("endpoints.html", {
-        "request": request,
-        "login": user["login"],
-        "gecos": user["gecos"],
-        "sentry_dsn": cfg.get("SENTRY_DSN"),
-        "refresh_interval": refresh * 1000  # en millisecondes pour JS
-    })
-
-#async def get_endpoints_grps(user=Depends(get_user_from_cookie),varlf:str=None,vallf:str=None):
-async def get_endpoints_grps(request: Request,varlf:str=None,vallf:str=None):
-    """
-    Affiche uniquement les variables des endpoints
-    """
-    await get_fnc_endpoints()   # En fait la fonction ne regenerera les caches que si necessaire
-    user = request.session.get("user")
-    varsip=fromcache(f"endpointssipvar",{})
-    endpo=fromcache('endpoints',{})
-
-    endpoints_per_var={}
-    for endpoint in varsip.keys():
-        if "Vars" in varsip[endpoint]:
-            for var in varsip[endpoint]["Vars"].keys():
-                val=varsip[endpoint]["Vars"][var]
-                if not var in endpoints_per_var.keys():
-                    endpoints_per_var[var]={}
-                if not val in endpoints_per_var[var].keys():
-                    endpoints_per_var[var][val]={}
-                endpoints_per_var[var][val][endpoint]=endpo[endpoint]
-    if varlf:
-        if varlf in endpoints_per_var.keys():
-            if vallf:
-                if vallf in endpoints_per_var[varlf].keys():
-                    return(endpoints_per_var[varlf][vallf])
-                else:
-                    return({})
-            else:
-                return(endpoints_per_var[varlf])
-        else:
-            return({})
-    else:
-        return(endpoints_per_var)
-        
-
-#async def get_endpoints(user=Depends(get_user_from_cookie)):
-async def get_endpoints(request: Request):
-    """
-    Affiche tout les endpoints iax/pjsip
-    """
-    user = request.session.get("user")
-    if len(user['login']) == 0:
-        return({})
-    return(await get_fnc_endpoints())
-
-async def get_fnc_endpoints():
-    """
-    recupere  tout les endpoints iax/pjsip
-    """
-    ret=fromcache('endpoints',{})
-    if isinstance(ret, int):
-        return({})
-    if len(ret) == 0:
-        # Recuperation, sans cache de la liste de tout les endpoionts pjsip
-        hero="PJSIPShowEndpoints"
-        allend=await action(hero)
-        # Recuperation, via cache de toutes les variables de tout les endppoints
-        varsip=fromcache(f"endpointssipvar",{})
-        noinitvarsip=len(varsip)
-        for onened in allend:   # Boucle sur tout les postes
-            ide="PJSIP/"+onened["ObjectName"]
-            ret[ide]={}
-            ret[ide]['ObjectName']=onened["ObjectName"]
-            ret[ide]['Type']="PJSIP"
-            if 'Contacts' in onened.keys() and len(onened['Contacts']):
-                ret[ide]['Contacts']=re.findall(r'@(\d+\.\d+\.\d+\.\d+)',onened['Contacts'])
-# "10003/sip:10003@10.37.0.239:55320;line=9xkpw9m9,10003/sip:10003@10.37.0.239:55320;line=mgpu4zc1,"
-# "antoine/sip:antoine@192.168.0.239:55320;line=9xkpw9m9,antoine/sip:antoine@192.168.0.92:55320;line=mgpu4zc1,"
-# "192.168.0.239" et "192.168.0.92"
-            ret[ide]['Up']=True
-            if onened['DeviceState']=="Unavailable":
-                ret[ide]['Up']=False
-            if ide not in varsip:
-                hero={"Action":"PJSIPShowEndpoint","Endpoint":onened["ObjectName"]}
-                tmp=await action(hero)
-                if 'SetVar' in tmp[0].keys() and len(tmp[0]['SetVar']):
-                    noinitvarsip=0
-                    varsip[ide]={}
-                    varsip[ide]['Vars']={}
-                    for ligne in tmp[0]['SetVar'].split(','):
-                        k,v=ligne.split('=',1)
-                        varsip[ide]['Vars'][k]=v
-                else:
-                    varsip[ide]={}
-            ret[ide]['SetVar']=varsip[ide]
-            ret[ide]['Full']=onened
-            if not noinitvarsip:    # Si on considere qu'il faut ecraser le cache...
-                tocache(f"endpointssipvar",varsip,600)
- 
-        hero="IAXpeerlist"
-        allend=await action(hero)
-        for onened in allend:
-            ide="IAX2/"+onened["ObjectName"]
-            ret[ide]={}
-            ret[ide]['ObjectName']=onened["ObjectName"]
-            ret[ide]['Type']="IAX2"
-            if onened['IPaddress']=="(null)":
-                ret[ide]['Contacts']=onened['IPaddress']
-            ret[ide]['Up']=True
-            if onened['Status']=="UNKNOWN":
-                ret[ide]['Up']=False
-            ret[ide]['Full']=onened
-        tocache('endpoints',ret,3)
-    return(ret)
-
-
 #async def dial_page(request: Request, login=Depends(get_user_from_cookie)):
-async def dial_page(request: Request):
-    user = request.session.get("user")
-    return templates.TemplateResponse("dial.html", {
-        "request": request,
-        "sentry_dsn": cfg.get("SENTRY_DSN"),
-        "login": login['login']
-    })
+async def form_dial(varSession,params={}):
+    if 'preferred_username' in varSession.keys():
+        return ({'template':"dial.html",'varSession': varSession})
+    else:
+        return({'redirect':'/login'})
 
-#async def get_myphones(user=Depends(get_user_from_cookie)):
-async def get_myphones(request: Request):
-    # Exemple statique — à remplacer par une vraie source
-    user = request.session.get("user")
-    if len(user['login']) == 0:
-        return([])
 
-    return ["10012", "1002", "_"]
-
-async def showtrack(request: Request):
+async def showtrack(varSession,params={}):
     user = request.session.get("user")
     data = await request.json()
     if len(user['login']) == 0:
@@ -555,7 +350,7 @@ async def showtrack(request: Request):
     return(trackeurAMI)
 
 #async def dial_api(request: Request, user=Depends(get_user_from_cookie)):
-async def dial_api(request: Request):
+async def dial_api(varSession,params={}):
     data = await request.json()
     user = request.session.get("user")
     appellant = data.get("appellant")
