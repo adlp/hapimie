@@ -198,7 +198,8 @@ class Zapiz:
                 if 'template_data' in result.keys():
                     for k in result['template_data'].keys():
                         nextstep[k]=result['template_data'][k]
-                nextstep['refresh_interval']=1000
+                #nextstep['refresh_interval']=1000
+                nextstep['name']=varSession.get("name",None)
                 #print('👽️ result')
                 #print(result)
                 return self.templates.TemplateResponse(result['template'],nextstep)

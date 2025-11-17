@@ -48,8 +48,8 @@
   <div class="header">
     <div><a href="/">🏠 Accueil</a> <a href="/ligne">☎️ </a><a href="/queue">🐍</a><a href="/help">🔍 Help</a></div>
     <div style="text-align:right; margin-bottom:10px;">
-    {% if login %}
-        👤 Connecté en tant que <strong>{{ login }}</strong> |
+    {% if name %}
+        👤 Connecté en tant que <strong>{{ name }}</strong> |
         <a href="/logout">🔓 Se déconnecter</a>
     {% else %}
         <a href="/login">🔐 Se connecter</a>
