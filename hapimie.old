@@ -1,0 +1,1060 @@
+#!/usr/bin/env python3
+
+# -*- coding: utf-8 -*-
+# Copyright (C) 2025 Antoine DELAPORTE
+# Licensed under the EUPL v.1.2
+# See LICENSE file or https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12
+
+from fastapi import FastAPI, Request, Form, Response, Depends, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
+
+from fastapi.security import OAuth2PasswordRequestForm
+from passlib.context import CryptContext
+from datetime import datetime, timedelta
+from time import time, sleep
+import csv, httpx
+import re
+try:
+    from jose import jwt, JWTError
+except ImportError:
+    from jwt import encode as jwt_encode, decode as jwt_decode
+    from jwt import InvalidTokenError as JWTError
+    import jwt
+
+from panoramisk.manager import Manager
+
+import asyncio
+from pprint import pprint
+
+import os,argparse,sys,configparser
+
+
+app = FastAPI(
+    title="Hapimie",
+    description="Happy l'api amie de l'AMI",
+    version="0.0.3",
+    docs_url="/docs",      # URL de Swagger
+    redoc_url="/redoc",    # URL de Redoc
+    openapi_url="/openapi.json"  # Spécification OpenAPI
+    )
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+# Montage des fichiers statiques et templates
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
+
+parser = argparse.ArgumentParser(
+    description="Happy l'api amie de l'AMI"
+    )
+parser.add_argument("--cfgfile", default="/usr/local/etc/hapimie.cfg", help="Specify a config file")
+parser.add_argument("--name", default="default", help="Specify a config file")
+
+# 🧩 Analyse des arguments
+args,unknown = parser.parse_known_args()
+
+# ⚠️ Gestion des arguments inconnus
+if unknown:
+    print("❌ Arguments inconnus :", ' '.join(unknown))
+    parser.print_help()
+    sys.exit(1)
+
+if os.path.exists(args.cfgfile) and os.path.isfile(args.cfgfile):
+    config= configparser.ConfigParser()
+    config.optionxform=str
+    config.read(args.cfgfile)
+    if args.name not in config.keys():
+        print(f'No {args.name} in {args.cfgfile}... OOOoooops')
+        sys.exit(1)
+else:
+    print(f'No {args.cfgfile}.... Kouik')
+    sys.exit(1)
+
+cfg={}
+cfg['API_PORT']= 8888
+cfg['API_HOST']= "0.0.0.0"
+cfg['AMI_HOST']= "127.0.0.1"
+cfg['API_PATH']= "/api"
+cfg['AMI_PORT']= 5038
+cfg['AMI_USER']= "asterisk"
+cfg['AMI_PASS']= "Sangoku"
+cfg['MAX_RETRIES']= 3
+cfg['RETRY_DELAY']= 3  # secondes
+cfg['SECRET_KEY']= "supersecretkey"
+cfg['ALGORITHM']= "HS256"
+cfg['TOKEN_EXPIRY_HOURS']= 2
+cfg['AUTHENTIK_ENABLED']= False
+cfg['AUTHENTIK_TOKEN_URL']= "https://authentik.example.com/application/o/token/"
+cfg['AUTHENTIK_CLIENT_ID']= "your-client-id"
+cfg['AUTHENTIK_CLIENT_SECRET']= "your-client-secret"
+cfg['SENTRY_DSN']=""
+for elem in cfg.keys():
+    if elem not in config[args.name]:
+        continue
+    cfg[elem]=config[args.name][elem]
+for elem in ['API_PORT','AMI_PORT','MAX_RETRIES','RETRY_DELAY']:
+    i=cfg[elem]
+    cfg[elem]=int(i)
+for elem in ['TOKEN_EXPIRY_HOURS']:
+    i=cfg[elem]
+    cfg[elem]=float(i)
+
+cfg['API_PORT']+=1
+
+if 'SENTRY_DSN' in cfg.keys() and len(cfg['SENTRY_DSN']):
+    print("Sentry Enabling")
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=cfg['SENTRY_DSN'],
+        environment="production",
+        release="hapimie@2.0",
+        # Add data like request headers and IP for users,
+        # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
+        send_default_pii=True,
+        )
+
+cache={}
+
+def fromcache(clef,defaultValue=None,maxtime=None):
+    if clef not in cache.keys():
+        return(defaultValue)
+    if maxtime is None:
+        maxtime= cache[clef]['timemax']
+    if int(time())-cache[clef]['timeput'] < maxtime:
+        print(f'Read {clef} from cache')
+        return(cache[clef]['data'])
+    else:
+        return(defaultValue)
+
+def tocache(clef,data,maxtime=2):
+    cache[clef]={}
+    cache[clef]['data']=data
+    cache[clef]['timeput']=int(time())
+    cache[clef]['timemax']=maxtime
+
+
+def format_epoch(epoch=int(datetime.now().timestamp())):
+    # Si le timestamp est en millisecondes, on le convertit en secondes
+    if epoch > 1e12:
+        epoch = epoch / 1000
+
+    dt = datetime.fromtimestamp(epoch)
+    return dt.strftime("%d/%m/%Y %H:%M:%S")
+
+### # Vérification du cookie
+### def get_current_user(request: Request):
+###     user = request.cookies.get("user")
+###     if user in USERS:
+###         return user
+###     raise HTTPException(status_code=401)
+
+# Load local users from CSV
+def load_local_users():
+    users = {}
+    with open("users.csv") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            users[row["login"]] = {
+                "password": row["password_hash"],
+                "email": row["email"],
+                "gecos": row["gecos"]
+            }
+    return users
+
+# Verify password
+def verify_password(plain, hashed):
+    return pwd_context.verify(plain, hashed)
+
+# Try local auth
+def try_local_auth(username, password):
+    users = load_local_users()
+    user = users.get(username)
+    if user and verify_password(password, user["password"]):
+        return {
+            "login": username,
+            "email": user["email"],
+            "gecos": user["gecos"],
+            "source": "local"
+        }
+
+@app.get("/logout")
+def logout(request: Request):
+    htmlvars= {"request": request,"sentry_dsn": cfg.get("SENTRY_DSN")}
+    response = templates.TemplateResponse("logout.html", htmlvars)
+    response.delete_cookie("access_token")
+    return response
+
+
+# Try Authentik auth
+def try_authentik_auth(username, password):
+    if not cfg['AUTHENTIK_ENABLED']:
+        return None
+    data = {
+        "username": username,
+        "password": password,
+        "grant_type": "password",
+        "client_id": cfg['AUTHENTIK_CLIENT_ID'],
+        "client_secret": cfg['AUTHENTIK_CLIENT_SECRET']
+    }
+    r = httpx.post(cfg['AUTHENTIK_TOKEN_URL, data=data'])
+    if r.status_code == 200:
+        return {
+            "login": username,
+            "email": r.json().get("email", ""),
+            "gecos": r.json().get("name", username),
+            "source": "authentik"
+        }
+
+# Create JWT token
+def create_token(user):
+    payload = {
+        "sub": user["login"],
+        "email": user["email"],
+        "gecos": user["gecos"],
+        "source": user["source"],
+        "exp": datetime.utcnow() + timedelta(hours=cfg['TOKEN_EXPIRY_HOURS'])
+    }
+    return jwt.encode(payload, cfg['SECRET_KEY'], algorithm=cfg['ALGORITHM'])
+
+# Dependency to inject login/gecos
+def get_auth_info(request: Request):
+    return {"login": request.state.login, "gecos": request.state.gecos}
+
+def get_user_from_cookie(request: Request):
+    token = request.cookies.get("access_token")
+    login = ""
+    gecos = ""
+    if token:
+        try:
+            payload = jwt.decode(token, cfg['SECRET_KEY'], algorithms=[cfg['ALGORITHM']])
+            login = payload.get("sub", "")
+            gecos = payload.get("gecos", "")
+        except JWTError:
+            pass
+    return {"login": login, "gecos": gecos}
+
+# Page d'accueil avec formulaire de login
+@app.get("/")
+def home(request: Request, user=Depends(get_user_from_cookie)):
+    htmlvars= {"request": request,
+        "sentry_dsn": cfg.get("SENTRY_DSN"),
+        "login": user["login"],
+        "gecos": user["gecos"],
+        }
+    return templates.TemplateResponse("welcome.html", htmlvars )
+
+# Login route
+@app.get("/login")
+def login_page(request: Request, user=Depends(get_user_from_cookie)):
+    htmlvars= {"request": request,"sentry_dsn": cfg.get("SENTRY_DSN")}
+    if len(user['login']):
+        return(RedirectResponse(url="/", status_code=302))
+    return templates.TemplateResponse("login.html", htmlvars)
+
+@app.post("/login")
+def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
+    # Authentifie l'utilisateur ici (local ou Authentik)
+    user = try_local_auth(username, password) or try_authentik_auth(username, password)
+    if not user:
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "sentry_dsn": cfg.get("SENTRY_DSN"),
+            "error": "Identifiants invalides"
+        })
+    token = create_token(user)
+    response = RedirectResponse(url="/", status_code=302)
+    response.set_cookie("access_token", token, httponly=True)
+    return response
+
+# Middleware to protect /api routes
+@app.middleware("http")
+async def protect_api_routes(request: Request, call_next):
+    if request.url.path.startswith("/api"):
+        token = request.cookies.get("access_token")  # ← à corriger ici
+        login = ""
+        gecos = ""
+        if token:
+            try:
+                payload = jwt.decode(token, cfg['SECRET_KEY'], algorithms=[cfg['ALGORITHM']])
+                login = payload.get("sub", "")
+                gecos = payload.get("gecos", "")
+            except JWTError:
+                pass
+        request.state.login = login
+        request.state.gecos = gecos
+    return await call_next(request)
+
+##########################################################################################
+# === AMI Manager ===
+manager = Manager(
+    host=cfg['AMI_HOST'],
+    port=cfg['AMI_PORT'],
+    username=cfg['AMI_USER'],
+    secret=cfg['AMI_PASS'],
+    forgetable_actions=('login',)
+    )
+
+trackeurAMI={}
+trackeurAMI['Originate']={}
+
+async def wait_for_protocol():
+    """
+    Attend que la connexion soit prête
+    """
+    for _ in range(20):  # max 2 secondes
+        if manager.protocol:
+            return
+        print("Reconnexion a l'AMI")
+        await asyncio.sleep(0.1)
+    raise RuntimeError("Connexion AMI non établie")
+
+
+# Fonction de gestion d'événement
+def on_event_OriginateResponse(manager,event):
+
+    #if isinstance(event.Uniqueid, str) and event.Uniqueid.startswith('Hapimie-') and event.event not in ['VarSet','Newexten']:
+    #    print(f"Événement : {event.event} LOOK")
+    #    print(trackeurAMI)
+    #    print(event)
+
+    if event.event == "Hangup" and isinstance(event.Uniqueid, str) and event.Uniqueid in trackeurAMI['Originate']:
+        print(f"Événement : {event.event} END")
+        del(trackeurAMI['Originate'][event.Uniqueid])
+
+    if event.event == 'Newchannel' and isinstance(event.Uniqueid, str) and event.Uniqueid in trackeurAMI['Originate']:
+        print(f"Événement : {event.event} FOUNDING")
+        trackeurAMI['Originate'][event.Uniqueid]['Channel']=event.Channel
+
+    #if event.Uniqueid in trackeurAMI['Originate'].keys():
+    #    print(f"Événement : {event.event}")
+    #    print(event)
+        
+    if event.event not in ['TestEvent','FullyBooted','SuccessfulAuth','VarSet'] and 1 == 2:
+        print(f"Événement : {event.event}")
+        print(event)
+        if event.name == 'OriginateResponse':
+            print("Channel ID :", event.get('Channel'))
+
+async def action(param=None):
+    """
+    Envoie une action AMI via Panoramisk et transforme la réponse en dictionnaire(s) nettoyé(s).
+    - Supprime les clés inutiles comme 'ActionID'
+    - Gère les réponses multiples (listes d'événements)
+    TODO: mieux gerer le wait_for_protocol
+    """
+    if param is None:
+        hero={"Action": "ping"}
+    if type(param) == dict:
+        hero=param
+    elif type(param) == str:
+        hero={"Action": param}
+    else:
+        hero={"Action": "ping"}
+
+    print(hero)
+    await wait_for_protocol()
+
+    for attempt in range(1, cfg['MAX_RETRIES'] + 1):
+        try:
+            response = await asyncio.wait_for(manager.send_action(hero), timeout=cfg['RETRY_DELAY'])
+            pprint("Answer")
+            break
+        except (asyncio.TimeoutError, ConnectionError) as e:
+            print(f"⚠️ Tentative {attempt} échouée : {e}")
+            if attempt < cfg['MAX_RETRIES']:
+                print(f"⏳ Nouvelle tentative dans {cfg['RETRY_DELAY']} secondes...")
+                manager.close()
+                await asyncio.sleep(cfg['RETRY_DELAY']/2)
+                #manager.register_event('OriginateResponse', on_event_OriginateResponse)
+                manager.register_event('*', on_event_OriginateResponse)
+                manager.connect()
+                await asyncio.sleep(cfg['RETRY_DELAY']/2)
+            else:
+                print("💥 Plantage après 3 tentatives.")
+                response={"error": "Plantage après 3 relances inefficaces"}
+                break
+###
+
+    def clean(entry):
+        d = dict(entry.items()) if hasattr(entry, "items") else entry
+        if not isinstance(d, dict):
+            return None
+        if d.get("EventList") in ("start", "Complete"):
+            return None
+        return {k: v for k, v in d.items() if k != "ActionID"}
+
+    if isinstance(response, list):
+        return [r for r in (clean(item) for item in response) if r]
+    elif hasattr(response, "items"):
+        cleaned = clean(response)
+        return cleaned if cleaned else {}
+    else:
+        return {"raw": str(response)}
+
+
+def declare_path(app, method: str, path: str, *, summary: str = None, include_in_schema: bool = True):
+    """
+    Permet de preformarter pour swag, car, ca swag
+    """
+    def decorator(func):
+        doc = func.__doc__ or "Pas de description disponible."
+        lines = doc.strip().split("\n")
+
+        # Si summary est vide, on prend la première ligne de la docstring
+        effective_summary = summary or (lines[0].strip() if lines else "Pas de résumé")
+        # Le reste de la docstring devient la description
+        description = "\n".join(lines[1:]).strip() if len(lines) > 1 else None
+
+        route = getattr(app, method)
+        route(
+            path,
+            description=doc,
+            summary=effective_summary,
+            include_in_schema=include_in_schema,
+            )(func)
+        return func
+    return decorator
+
+
+@app.on_event("startup")
+def startup():
+    print("Connexion a l'AMI")
+    #manager.register_event('OriginateResponse', on_event_OriginateResponse)
+    manager.register_event('*', on_event_OriginateResponse)
+    manager.connect()
+
+#@app.get("/close", response_class=HTMLResponse,include_in_schema=False)
+#def close(request: Request):
+#    manager.close()
+#    user = request.cookies.get("user")
+#    return templates.TemplateResponse("welcome.html", {"request": request, "user": user})
+
+@app.get("/json", response_class=HTMLResponse)
+@app.get("/json/", response_class=HTMLResponse)
+@app.get("/json/{nom}", response_class=HTMLResponse)
+def json_view(request: Request, user=Depends(get_user_from_cookie),nom: str = None):
+    return templates.TemplateResponse("json.html", {
+        "request": request,
+        "command_name": nom,
+        "login": user["login"],
+        "gecos": user["gecos"],
+        "sentry_dsn": cfg.get("SENTRY_DSN"),
+    })
+
+@app.get(cfg['API_PATH']+"/cache")
+async def show_cache(request: Request,user=Depends(get_user_from_cookie),nom: str = None):
+    return(cache)
+
+@app.get("/help", response_class=HTMLResponse)
+def show_help(request: Request):
+    htmlvars={"request": request,"sentry_dsn": cfg.get("SENTRY_DSN")}
+    return templates.TemplateResponse("help.html", htmlvars)
+@app.get("/help/{nom}", response_class=HTMLResponse)
+def show_help_detail(request: Request, nom: str):
+    return templates.TemplateResponse("help-detail.html", {
+        "request": request,
+        "help": nom,
+        "sentry_dsn": cfg.get("SENTRY_DSN"),
+    })
+
+@declare_path(app, "get", cfg['API_PATH']+"/help-syntax/{command}")
+async def get_help_stx(command: str = None):
+    """
+    Renvoie uniquement la syntax de la commande donnée en parametre
+    """
+    if command is None:
+        return{}
+    hero = {"Action": "Command","command": f"manager show command {command}"}
+
+    ret= fromcache('stx '+hero['command'],{})
+    if(len(ret)):
+        return(ret)
+
+    doc = await action(hero)
+    for ligne in doc['Output']:
+        if len(ligne)==0:
+            break
+        neli=ligne.replace('[','').replace(']','').split(':',2)
+        if len(neli) != 2:
+            continue
+        if neli[0] in [ "Syntax","Action","ActionID" ]:
+            continue
+        ret[neli[0]]=neli[1]
+ 
+    tocache('stx '+hero['command'],ret,300)
+    return ( ret )
+
+@app.post(cfg['API_PATH']+"/help-exec")
+async def help_exec(request: Request,user=Depends(get_user_from_cookie),nom: str = None):
+    form = await request.form()
+    data = dict(form)
+    data["Action"] = form.get("Action")
+
+    if len(user['login']):
+        pprint(data)
+        ret=await action(data)
+        pprint(ret)
+        pprint(type(ret))
+
+        response = {
+            "Response": "Success",
+            "Message": f"Commande {data['Action']} exécutée",
+            "Data": data,
+            'Retour': ret
+        }
+    else:
+        response = {
+            "Response": "Failure",
+            "Message": f"Non loggué ",
+            "Data": data,
+            'Retour': {}
+        }
+
+    return(response)
+
+
+def decoupe_lexique(chaine: str):
+    """
+    Découpe une chaîne en (commande, description).
+    Supposé que la commande est le premier mot non vide,
+    suivi d'espaces, puis la description.
+    """
+    # Nettoyer les espaces en début/fin
+    chaine = chaine.strip()
+
+    # Découper sur les espaces multiples
+    import re
+    parties = re.split(r'\s{2,}', chaine)
+
+    if len(parties) >= 2:
+        commande = parties[0].strip()
+        description = " ".join(parties[1:]).strip()
+        return commande, description
+    else:
+        return chaine, ""
+
+
+
+@declare_path(app, "get", f"{cfg['API_PATH']}/help",summary="List AMI Commands")
+@declare_path(app, "get", f"{cfg['API_PATH']}/help/",include_in_schema=False)
+@declare_path(app, "get", cfg['API_PATH']+"/help/{command}",summary="Aide sur une commande de l'AMI")
+async def get_help(command: str = None):
+    """
+    Renvoie la doc de l'AMI
+    Si on precise un parametre, c'est ce parametre sur lequel on renverra la doc
+    TODO: gere un cache pour cette commande
+    """
+    #if "status" not in user["permissions"]:
+    #    raise HTTPException(status_code=403, detail="Permission refusée")
+    #response = await manager.send_action({"Action": "Command","command": f"manager show command {command}"})
+
+    if command is None:
+        hero = {"Action": "Command","command": "manager show commands"}
+        ret= fromcache(hero['command'],None)
+        if ret is not None:
+            return(ret)
+        ret=await action(hero)
+        if "Output" in ret.keys() and isinstance(ret["Output"], list):
+            ret['Commands']={}
+            for ligne in ret['Output']:
+                cmd,desc=decoupe_lexique(ligne)
+                if cmd not in ['Action','------']:
+                    ret['Commands'][cmd]=desc
+            del(ret["Output"])
+        tocache(hero['command'],ret,300)
+        return(ret)
+    else:
+        hero = {"Action": "Command","command": f"manager show command {command}"}
+        ret= fromcache(hero['command'],None)
+        if ret is not None:
+            return(ret)
+        ret=await action(hero)
+        tocache(hero['command'],ret,300)
+        return(ret)
+
+def trichan(allChan):
+    ret={}
+    ret['Channels']={}
+    ret['Phones']={}
+    ret['Caller']={}
+    lnkt={}
+
+    if not isinstance(allChan, list):
+        allCahn=[]
+
+    for call in allChan:
+        if 'error' == call:
+            continue
+        ret['Channels'][call['Channel']]=call
+        lnkt[call['Uniqueid']]=call['Channel']
+
+    for call in allChan:
+        if 'error' == call:
+            continue
+        phone=call['Channel'].split('-')[0]
+        if call['Linkedid'] in lnkt.keys():
+            ret['Channels'][call['Channel']]['_Linkedid']=lnkt[call['Linkedid']]
+        if 'DNID' in call.keys() and call['Uniqueid'] == call['Linkedid']:
+            ret['Channels'][call['Channel']]['_Call']=call['DNID']
+            ret['Caller'][call['Channel']]=[]
+        else:
+            ret['Channels'][call['Channel']]['_Call']='_Receiving'
+        ret['Channels'][call['Channel']]['_Phone']=phone
+
+        if phone not in ret['Phones']:
+            ret['Phones'][phone]=[]
+        ret['Phones'][phone].append(call['Channel'])
+
+        if 'Variable' in call.keys():
+            ret['Channels'][call['Channel']]['Variables']={}
+            if isinstance(call['Variable'],str):
+                clef,val=call['Variable'].split('=',1)
+                ret['Channels'][call['Channel']]['Variables'][clef]=val
+            else:
+                for ligne in call['Variable']:
+                    if '=' not in ligne:
+                        print(f'[ERR][/api/status] Erreure Analyse {ligne}')
+                        pprint(allChan)
+                        continue
+                    clef,val=ligne.split('=',1)
+                    ret['Channels'][call['Channel']]['Variables'][clef]=val
+
+    if len(ret['Caller']):
+        for call in allChan:
+            if '_Linkedid' in call and ret['Channels'][call['Channel']]['_Call']=='_Receiving':
+                ret['Caller'][call['_Linkedid']].append(call['Channel'])
+    return(ret)
+
+@declare_path(app,"get", f"{cfg['API_PATH']}/status")
+#async def get_status(user=Depends(get_current_user)):
+async def get_status(auth=Depends(get_auth_info)):
+    """
+    Renvoie le status.... hmmmm ca ressemble a un coreshowchannel
+    """
+    if not auth['login']:
+        return({ "Channels": {}, "Phones": {}, "Caller": {} })
+    hero = {'Action':"Status","AllVariables":"True"}
+    ret= fromcache('status',None)
+    if ret is None:
+        ret=trichan(await action(hero))
+        tocache('status',ret,1)
+    return(ret)
+
+@declare_path(app,"post",cfg['API_PATH']+"/HangUp")
+async def hangup(request: Request,auth=Depends(get_auth_info)):
+    """
+    Permet de raccrocher le channel en cours
+    """
+    if not auth['login']:
+        raise HTTPException(status_code=403)
+    data= await request.json()
+    Channel=data.get("channel_id")
+    if Channel is None:
+        raise HTTPException(status_code=508)
+    hero={'action':'HangUp', 'Channel': Channel,'Cause': 'API Call' }
+    return(await action(hero))
+
+@app.get("/ligne", response_class=HTMLResponse)
+def ligne_view(request: Request, user=Depends(get_user_from_cookie)):
+#def ligne_view(request: Request):
+    #user = request.cookies.get("user")
+    refresh_interval = 1000  # en millisecondes
+    return templates.TemplateResponse("ligne.html", {
+        "request": request,
+        "login": user["login"],
+        "gecos": user["gecos"],
+        "sentry_dsn": cfg.get("SENTRY_DSN"),
+        "refresh_interval": refresh_interval
+    })
+
+#@declare_path(app,"get", f"{cfg['API_PATH']}/coreshowchannels")
+#async def get_coreshowchannels():
+#    """
+#    Affiche les channels en cours
+#    """
+#    hero="CoreShowChannels"
+#    return(trichan(await action(hero)))
+
+@app.get("/queue", response_class=HTMLResponse)
+async def queue(request: Request, user=Depends(get_user_from_cookie)):
+    """
+    Affichage des queues
+    """
+    refresh_interval = 5000  # en millisecondes
+    return templates.TemplateResponse("queue.html", {
+        "request": request,
+        "sentry_dsn": cfg.get("SENTRY_DSN"),
+        "refresh_interval": refresh_interval,
+        "login": user["login"],
+        "gecos": user["gecos"]
+    })
+@declare_path(app, "get", f"{cfg['API_PATH']}/queue")
+@declare_path(app, "get", f"{cfg['API_PATH']}/queue/",include_in_schema=False)
+@declare_path(app, "get", cfg['API_PATH']+"/queue/{queue}")
+async def get_queue(user=Depends(get_user_from_cookie),queue:str = None):
+    """
+    Affiche le retour combiné de queuestatus et queusummary
+    """
+
+    queueRet=fromcache('Queues',{})
+    if len(queueRet) == 0:
+        statusConverter=['Unknown','Not Inuse','Inuse','Busy','Invalid','Unavailable','Ringing','Ringinuse','Onhold']
+        hero='QueueStatus'
+        allm=await action(hero)
+        for bloc in allm:
+            if 'Queue' not in bloc:
+                continue
+            quenom=bloc['Queue']
+            if quenom not in queueRet.keys():
+                queueRet[quenom]={}
+                queueRet[quenom]["QueueEntry"]={}
+                queueRet[quenom]["QueueMember"]={}
+    
+            if bloc['Event'] == "QueueParams":
+                queueRet[quenom]['QueueParams']=bloc
+            elif bloc['Event'] == "QueueEntry":
+                queueRet[quenom]["QueueEntry"][bloc['Channel']]=bloc
+            elif bloc['Event'] == "QueueMember":
+                queueRet[quenom]["QueueMember"][bloc["Name"]]=bloc
+            elif allmembers:
+                queueRet[quenom]["FallDown"].append(bloc)
+    
+        hero='QueueSummary'
+        allm=await action(hero)
+        for bloc in allm:
+            quenom=bloc['Queue']
+            #queueRet[quenom]['QueueParams']["LoggedIn"]=bloc
+            queueRet[quenom]['QueueParams']["LoggedIn"]=bloc['LoggedIn']
+            queueRet[quenom]['QueueParams']["Available"]=bloc['Available']
+            queueRet[quenom]['QueueParams']["Callers"]=bloc['Callers']
+            queueRet[quenom]['QueueParams']["LongestHoldTime"]=bloc['LongestHoldTime']
+            queueRet[quenom]['QueueParams']["content"]+='/'+bloc['content']
+            del(queueRet[quenom]['QueueParams']['Event'])
+            for phone in queueRet[quenom]["QueueMember"]:
+                del(queueRet[quenom]["QueueMember"][phone]['Event'])
+                del(queueRet[quenom]["QueueMember"][phone]['Queue'])
+                del(queueRet[quenom]["QueueMember"][phone]['Name'])
+                queueRet[quenom]["QueueMember"][phone]['_Status']=statusConverter[int(queueRet[quenom]["QueueMember"][phone]['Status'])]
+                if queueRet[quenom]["QueueMember"][phone]['Paused']=="1":
+                    queueRet[quenom]["QueueMember"][phone]['_Status']+="/Pause"
+                if queueRet[quenom]["QueueMember"][phone]['LastCall'] != "0":
+                    tmp=queueRet[quenom]["QueueMember"][phone]['LastCall']
+                    queueRet[quenom]["QueueMember"][phone]['LastCall']=format_epoch(int(tmp))
+                else:
+                    queueRet[quenom]["QueueMember"][phone]['LastCall']="None"
+                if queueRet[quenom]["QueueMember"][phone]['LastPause'] != "0":
+                    tmp=queueRet[quenom]["QueueMember"][phone]['LastPause']
+                    queueRet[quenom]["QueueMember"][phone]['LastPause']=format_epoch(int(tmp))
+                else:
+                    queueRet[quenom]["QueueMember"][phone]['LastPause']="None"
+                if queueRet[quenom]["QueueMember"][phone]['LoginTime'] != "0":
+                    tmp=queueRet[quenom]["QueueMember"][phone]['LoginTime']
+                    queueRet[quenom]["QueueMember"][phone]['LoginTime']=format_epoch(int(tmp))
+                else:
+                    queueRet[quenom]["QueueMember"][phone]['LoginTime']="None"
+        tocache('Queues',queueRet)
+
+    if len(user['login'])==0:
+        queue="santeol-poc"
+    if queue is not None:
+        return({queue: queueRet[queue]})
+
+    return(queueRet)
+
+
+
+@app.get("/dbview", response_class=HTMLResponse)
+async def dbview(request: Request, user=Depends(get_user_from_cookie)):
+    """
+    Affichage pour lecture, modification et suppression d'enregistrement dans la DB d'Asterisk
+    """
+    return templates.TemplateResponse("dbview.html", {
+        "request": request,
+        "login": user["login"],
+        "sentry_dsn": cfg.get("SENTRY_DSN"),
+        "gecos": user["gecos"]
+    })
+
+@app.post(cfg['API_PATH']+"/dbPut")
+async def db_put(request: Request,user=Depends(get_user_from_cookie)):
+    form = await request.form()
+    data = dict(form)
+    data["Action"] = form.get("Action")
+
+    family, key = data['Attribut'].split("/", 1)
+    hero={'Action':'DbPut','family':family,'key':key,'val':data['Val']}
+    if len(user['login']):
+        ret=await action(hero)
+
+        response = {
+            "Response": "Success",
+            "Message": f"Commande {data['Action']} exécutée",
+            "Data": data,
+            "Action": hero,
+            'Retour': ret
+        }
+        tocache('database',{},0.1)
+    else:
+        response = {
+            "Response": "Failure",
+            "Message": f"No authentification",
+            "Data": data,
+            "Action": hero,
+            'Retour': {}
+        }
+
+    return(response)
+
+@app.post(cfg['API_PATH']+"/dbDel")
+async def db_del(request: Request,user=Depends(get_user_from_cookie)):
+    form = await request.form()
+    data = dict(form)
+    data["Action"] = form.get("Action")
+
+    family, key = data['Attribut'].split("/", 1)
+    hero={'Action':'DbDel','family':family,'key':key}
+
+    if len(user['login']):
+        ret=await action(hero)
+
+        response = {
+            "Response": "Success",
+            "Message": f"Commande {data['Action']} exécutée",
+            "Data": data,
+            "Action": hero,
+            'Retour': ret
+        }
+        tocache('database',{},0.1)
+    else:
+        response = {
+            "Response": "Failure",
+            "Message": "No authentification",
+            "Data": data,
+            "Action": hero,
+            'Retour': {}
+        }
+
+    return(response)
+
+@declare_path(app,"get", f"{cfg['API_PATH']}/databaseshow")
+async def get_databaseshow(user=Depends(get_user_from_cookie)):
+    """
+    Equivalant de "database show" dans la CLI avec suppression de familles
+    Familles supprimées : 
+        - /subscription_persistence/
+        - /registrar/
+        - /CustomPresence/
+        - /CustomDevstate/
+    """
+    if len(user['login']) == 0:
+        return({})
+
+    ret=fromcache('database',{})
+    if len(ret) == 0:
+        hero = {"Action": "Command","command": "database show"}
+        resp=await action(hero)
+        ret={}
+        datas=resp['Output']
+        datas.pop()
+        for ligne in datas:
+            cmd,desc=decoupe_lexique(ligne)
+            if cmd.startswith('/subscription_persistence/'):
+                continue
+            elif cmd.startswith('/registrar/'):
+                continue
+            elif cmd.startswith('/CustomPresence/'):
+                continue
+            elif cmd.startswith('/CustomDevstate/'):
+                continue
+    
+            ret[cmd[1:]]=desc[2:]
+        tocache('database',ret,1)
+    return(ret)
+
+@app.get("/endpoints", response_class=HTMLResponse)
+def endpoints_view(request: Request, user=Depends(get_user_from_cookie), refresh: int = 5):
+    """
+    Affichage des endpoints
+    """
+    return templates.TemplateResponse("endpoints.html", {
+        "request": request,
+        "login": user["login"],
+        "gecos": user["gecos"],
+        "sentry_dsn": cfg.get("SENTRY_DSN"),
+        "refresh_interval": refresh * 1000  # en millisecondes pour JS
+    })
+
+@declare_path(app, "get", f"{cfg['API_PATH']}/endpoints_grps")
+@declare_path(app, "get", cfg['API_PATH']+"/endpoints_grps/{varlf}",summary="Renvoie uniquement la liste de groupes + endpoint dedans de la variable precisée")
+@declare_path(app, "get", cfg['API_PATH']+"/endpoints_grps/{varlf}/{vallf}",summary="Renvoie uniquement la liste de groupes + endpoint dedans de la variable precisée")
+async def get_endpoints_grps(user=Depends(get_user_from_cookie),varlf:str=None,vallf:str=None):
+    """
+    Affiche uniquement les variables des endpoints
+    """
+    await get_fnc_endpoints()   # En fait la fonction ne regenerera les caches que si necessaire
+    varsip=fromcache(f"endpointssipvar",{})
+    endpo=fromcache('endpoints',{})
+
+    endpoints_per_var={}
+    for endpoint in varsip.keys():
+        if "Vars" in varsip[endpoint]:
+            for var in varsip[endpoint]["Vars"].keys():
+                val=varsip[endpoint]["Vars"][var]
+                if not var in endpoints_per_var.keys():
+                    endpoints_per_var[var]={}
+                if not val in endpoints_per_var[var].keys():
+                    endpoints_per_var[var][val]={}
+                endpoints_per_var[var][val][endpoint]=endpo[endpoint]
+    if varlf:
+        if varlf in endpoints_per_var.keys():
+            if vallf:
+                if vallf in endpoints_per_var[varlf].keys():
+                    return(endpoints_per_var[varlf][vallf])
+                else:
+                    return({})
+            else:
+                return(endpoints_per_var[varlf])
+        else:
+            return({})
+    else:
+        return(endpoints_per_var)
+        
+
+@declare_path(app, "get", f"{cfg['API_PATH']}/endpoints")
+async def get_endpoints(user=Depends(get_user_from_cookie)):
+    """
+    Affiche tout les endpoints iax/pjsip
+    """
+    if len(user['login']) == 0:
+        return({})
+    return(await get_fnc_endpoints())
+
+async def get_fnc_endpoints():
+    """
+    recupere  tout les endpoints iax/pjsip
+    """
+    ret=fromcache('endpoints',{})
+    if isinstance(ret, int):
+        return({})
+    if len(ret) == 0:
+        # Recuperation, sans cache de la liste de tout les endpoionts pjsip
+        hero="PJSIPShowEndpoints"
+        allend=await action(hero)
+        # Recuperation, via cache de toutes les variables de tout les endppoints
+        varsip=fromcache(f"endpointssipvar",{})
+        noinitvarsip=len(varsip)
+        for onened in allend:   # Boucle sur tout les postes
+            ide="PJSIP/"+onened["ObjectName"]
+            ret[ide]={}
+            ret[ide]['ObjectName']=onened["ObjectName"]
+            ret[ide]['Type']="PJSIP"
+            if 'Contacts' in onened.keys() and len(onened['Contacts']):
+                ret[ide]['Contacts']=re.findall(r'@(\d+\.\d+\.\d+\.\d+)',onened['Contacts'])
+# "10003/sip:10003@10.37.0.239:55320;line=9xkpw9m9,10003/sip:10003@10.37.0.239:55320;line=mgpu4zc1,"
+# "antoine/sip:antoine@192.168.0.239:55320;line=9xkpw9m9,antoine/sip:antoine@192.168.0.92:55320;line=mgpu4zc1,"
+# "192.168.0.239" et "192.168.0.92"
+            ret[ide]['Up']=True
+            if onened['DeviceState']=="Unavailable":
+                ret[ide]['Up']=False
+            if ide not in varsip:
+                hero={"Action":"PJSIPShowEndpoint","Endpoint":onened["ObjectName"]}
+                tmp=await action(hero)
+                if 'SetVar' in tmp[0].keys() and len(tmp[0]['SetVar']):
+                    noinitvarsip=0
+                    varsip[ide]={}
+                    varsip[ide]['Vars']={}
+                    for ligne in tmp[0]['SetVar'].split(','):
+                        k,v=ligne.split('=',1)
+                        varsip[ide]['Vars'][k]=v
+                else:
+                    varsip[ide]={}
+            ret[ide]['SetVar']=varsip[ide]
+            ret[ide]['Full']=onened
+            if not noinitvarsip:    # Si on considere qu'il faut ecraser le cache...
+                tocache(f"endpointssipvar",varsip,600)
+ 
+        hero="IAXpeerlist"
+        allend=await action(hero)
+        for onened in allend:
+            ide="IAX2/"+onened["ObjectName"]
+            ret[ide]={}
+            ret[ide]['ObjectName']=onened["ObjectName"]
+            ret[ide]['Type']="IAX2"
+            if onened['IPaddress']=="(null)":
+                ret[ide]['Contacts']=onened['IPaddress']
+            ret[ide]['Up']=True
+            if onened['Status']=="UNKNOWN":
+                ret[ide]['Up']=False
+            ret[ide]['Full']=onened
+        tocache('endpoints',ret,3)
+    return(ret)
+
+@app.get("/dial", response_class=HTMLResponse)
+async def dial_page(request: Request, login=Depends(get_user_from_cookie)):
+    return templates.TemplateResponse("dial.html", {
+        "request": request,
+        "sentry_dsn": cfg.get("SENTRY_DSN"),
+        "login": login['login']
+    })
+
+@declare_path(app, "get", f"{cfg['API_PATH']}/myphones")
+async def get_myphones(user=Depends(get_user_from_cookie)):
+    # Exemple statique — à remplacer par une vraie source
+    if len(user['login']) == 0:
+        return([])
+
+    return ["10012", "1002", "_"]
+
+declare_path(app,"get", f"{cfg['API_PATH']}/trackeur")
+async def showtrack(request: Request, user=Depends(get_user_from_cookie)):
+    data = await request.json()
+    if len(user['login']) == 0:
+        return({})
+    return(trackeurAMI)
+
+#@app.post("/api/dial")
+@declare_path(app, "post", f"{cfg['API_PATH']}/dial")
+async def dial_api(request: Request, user=Depends(get_user_from_cookie)):
+    data = await request.json()
+    appellant = data.get("appellant")
+    numero = data.get("numero")
+    if len(user['login']) == 0:
+        return {"status": "KO", "login": user['login'], "appellant": appellant, "numero": numero}
+    ti=f'{appellant}-{numero}'
+    if ti in trackeurAMI['Originate'].keys():
+        print("Oulla c'est le dawa je ne sais pas encore gerer les bis,alors je raccrocerais l'autre et je relancerais")
+        print(f"Va falloire couper ca : {trackeurAMI['Originate'][ti]['Channel']}")
+    ti=f'Hapimie-{appellant}-{numero}-{time()}'
+    trackeurAMI['Originate'][ti]={}
+    hero = {'Action': 'Originate','Channel': f'Local/{appellant}@internal', 'Exten': numero, 'Context': 'internal', 'Priority': 1, 'CallerId':f'Mon ami {appellant}', 'Async':'false','ChannelId': ti }
+    ret=await action(hero)
+    pprint(ret)
+    
+    sleep(2)
+    print("show nous le trackeur impitoyable")
+    print(trackeurAMI['Originate'][ti])
+    if ti in trackeurAMI['Originate'].keys():
+        cha=trackeurAMI['Originate'][ti]
+
+    return {"status": ret['Response'], "login": user['login'], "appellant": appellant, "numero": numero, 'full':ret, 'channel': cha}
+
+
+
+
+##########################################################################################
+
+if __name__ == "__main__":
+    import uvicorn
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # ou ["http://localhost:3000"]
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        )
+    uvicorn.run(app, host=cfg['API_HOST'], port=cfg['API_PORT'])
+
