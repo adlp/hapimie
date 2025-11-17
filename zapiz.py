@@ -90,7 +90,8 @@ class Zapiz:
         @self.app.get("/logout")
         async def logout(request: Request):
             request.session.clear()
-            return RedirectResponse(url="/",status_code=202)
+            #return RedirectResponse(url="/",status_code=202)
+            return RedirectResponse(url="/")
         
         @self.app.get("/whoami")
         async def whoami(request: Request):

@@ -3,8 +3,11 @@
 {% block title %}Bienvenue{% endblock %}
 
 {% block content %}
-  <h1>Bienvenue {{ gecos }}</h1>
-  <p>Tu es connecté en tant que <strong>{{ login }}</strong>.</p>
+  {% if name %}
+  <h1>Bienvenue {{ name }}</h1>
+  {% else %}
+  <h3>Attention.... vous n'etes pas loggué, certaines fonctions seront limitées</h3>
+  {% endif %}
 
 
   <table id="commands-table">
