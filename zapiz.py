@@ -30,13 +30,15 @@ class Zapiz:
     def __init__(self, host: str="127.0.0.1", port: int=8080,
             startup: Callable=None,
             oidc_client_id=None, oidc_client_secret=None, oidc_issuer=None, oidc_scopes="openid profile email groups",
+            secret_key="your-secret-key",
             title=None, description=None, version= None, docs_url=None, redoc_url=None, openapi_url=None,
             template_dir="templates",static_dir="static",token_url="token",root=os.path.abspath(os.getcwd())+"/"):
         self.host = host
         self.port = port
         self.app = FastAPI(title=title,description=description,version=version,docs_url=docs_url,redoc_url=redoc_url,openapi_url=openapi_url)
-        self.app.add_middleware(SessionMiddleware, secret_key="your-secret-key")
-        self.templates = Jinja2Templates(directory=template_dir)
+        self.app.add_middleware(SessionMiddleware, secret_key=secret_key)
+        self.templates={}
+        self.templates['base']=Jinja2Templates(directory=template_dir)
         self.app.mount("/"+static_dir, StaticFiles(directory=root+static_dir), name="static")
         self.web_routes: Dict[str, str] = {}
         self.api_routes: Dict[str, Callable] = {}
@@ -64,6 +66,22 @@ class Zapiz:
 
     def run(self):
         uvicorn.run(self.app, host=self.host, port=self.port)
+
+    def add_template(self,template_dir,templateid=None):
+        if not templateid:
+            if '/' in template_dir:
+                templateid=template_dir.split('/')[-1]
+            else:
+                templateid=template_dir
+        self.templates[templateid]=Jinja2Templates(directory=template_dir)
+
+    def add_static(self,static_dir,staticid=None):
+        if not staticid:
+            if '/' in static_dir:
+                staticid=static_dir
+            else:
+                staticid=static_dir.split('/')[-1]
+        self.app.mount("/"+staticid, StaticFiles(directory=root+static_dir), name=staticid)
 
     def setup_auth_routes(self):
         @self.app.get("/login")
@@ -200,9 +218,12 @@ class Zapiz:
                         nextstep[k]=result['template_data'][k]
                 #nextstep['refresh_interval']=1000
                 nextstep['name']=varSession.get("name",None)
-                #print('👽️ result')
-                #print(result)
-                return self.templates.TemplateResponse(result['template'],nextstep)
+                #print('👽️ resul ta da')
+                #print(result.keys())
+                templateid='base'
+                if 'templateid' in result.keys():
+                    templateid=result['templateid']
+                return self.templates[templateid].TemplateResponse(result['template'],nextstep)
             elif 'redirect' in result.keys():
                 return await self.auth.authentik.authorize_redirect(request, result['redirect'])
             else:
