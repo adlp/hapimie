@@ -31,18 +31,17 @@ class Zapiz:
             startup: Callable=None,
             oidc_client_id=None, oidc_client_secret=None, oidc_issuer=None, oidc_scopes="openid profile email groups",
             title=None, description=None, version= None, docs_url=None, redoc_url=None, openapi_url=None,
-            template_dir="templates",static_dir="static",token_url="token"):
+            template_dir="templates",static_dir="static",token_url="token",root=os.path.abspath(os.getcwd())+"/"):
         self.host = host
         self.port = port
         self.app = FastAPI(title=title,description=description,version=version,docs_url=docs_url,redoc_url=redoc_url,openapi_url=openapi_url)
         self.app.add_middleware(SessionMiddleware, secret_key="your-secret-key")
         self.templates = Jinja2Templates(directory=template_dir)
-        self.app.mount("/"+static_dir, StaticFiles(directory=static_dir), name="static")
+        self.app.mount("/"+static_dir, StaticFiles(directory=root+static_dir), name="static")
         self.web_routes: Dict[str, str] = {}
         self.api_routes: Dict[str, Callable] = {}
         self.tokens = {}  # token: {owner, legend, expires}
         self.oauth2_scheme = OAuth2PasswordBearer(tokenUrl=token_url)
-        self.templates = Jinja2Templates(directory=template_dir)
 
         if oidc_client_id:
             self.auth = OAuth()

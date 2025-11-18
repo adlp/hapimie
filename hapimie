@@ -446,4 +446,5 @@ for route,func in apiPostFunc:
 #        )
 #    uvicorn.run(app, host=cfg['API_HOST'], port=cfg['API_PORT'])
 
-app.run()
+if __name__ == "__main__":
+    app.run()
