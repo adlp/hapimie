@@ -46,13 +46,13 @@
 </script>
 {% endif %}
   <div class="header">
-    <div><a href="/">🏠 Accueil</a> <a href="/ligne">☎️ </a><a href="/queue">🐍</a><a href="/help">🔍 Help</a></div>
+    <div><a href="/">🏠 Accueil</a> <a href="/ligne">☎️ </a><a href="/queue">🐍</a><a href="/endpoints">📞</a><a href="/help">🔍</a></div>
     <div style="text-align:right; margin-bottom:10px;">
     {% if name %}
         👤 Connecté en tant que <strong>{{ name }}</strong> |
-        <a href="/logout">🔓 Se déconnecter</a>
+        <a href="/logout">🔓 logout</a>
     {% else %}
-        <a href="/login">🔐 Se connecter</a>
+        <a href="/login">🔐 login</a>
     {% endif %}
     </div>
   </div>
@@ -63,7 +63,7 @@
 
   <p>
   <div class="header">
-    <div><a href="/">🏠 Accueil</a> <a href="/ligne">☎️ </a><a href="/queue">🐍</a></div>
+    <div><a href="/">🏠 Accueil</a> <a href="/ligne">☎️ </a><a href="/queue">🐍</a><a href="/endpoints">📞</a></div>
     <a href="#" class="btn btn-default">Retour en haut ↑</a>
     <div><a href="/help">🔍 Help</a></div>
   </div>
