@@ -33,6 +33,9 @@ table {
 th, td {
   border: 1px solid #ccc;
   padding: 10px;
+  height: 10px;
+  overflow: hidden;        /* Coupe le contenu débordant */
+  line-height: 10px;
 }
 th {
   background: #eee;
