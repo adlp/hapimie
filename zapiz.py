@@ -41,7 +41,7 @@ class Zapiz:
         self.templates['base']=Jinja2Templates(directory=template_dir)
         self.app.mount("/"+static_dir, StaticFiles(directory=root+static_dir), name="static")
         self.web_routes: Dict[str, str] = {}
-        self.api_routes: Dict[str, Callable] = {}
+        self.api_routes= { 'GET':{},'POST':{}}
         self.tokens = {}  # token: {owner, legend, expires}
         self.oauth2_scheme = OAuth2PasswordBearer(tokenUrl=token_url)
 
@@ -172,7 +172,110 @@ class Zapiz:
             user = self._verify_token(token)
             return self.templates.TemplateResponse(template_path, {"request": request, "user": user})
 
-    def api(self, uri: str, func: Callable,html:bool=False,verb:str="get"):
+    def api_add(self, uri: str, func: Callable,html:bool=True,verb:str="GET"):
+        """ 
+        Format des routes
+        uri func html verb  await (et on rajoutede suite s'il faut un await)
+        Le add remplacera comme un sauvage le comportement de mv :)
+        """
+        fncAsync=inspect.iscoroutinefunction(func)
+
+        uris=[uri]
+        if uri[-1] != "/":
+            uris.append(uri+"/")
+
+        for u in uris:
+            if not(self.api_routes[verb].get(u,None)):    # Si pas encore declarer alors creer la route
+                if verb=="GET":
+                    self.app.get(u)(self._secure_api_tab(verb,u))
+                elif verb=="POST":
+                    #self.app.post(u, response_class=response_class)(self._secure_api_tab()verb,u)
+                    self.app.post(u)(self._secure_api_tab(verb,u))
+            self.api_routes[verb][u]={}
+            self.api_routes[verb][u]['func']=func
+            self.api_routes[verb][u]['html']=html
+            self.api_routes[verb][u]['await']=fncAsync
+
+    def api_del(self, uri: str, verb:str="get"):
+        """ 
+        On ne supprime jamais un URI, on la fait pointer sur une 404 (merci fastapi...)
+        Bon en fait, suffit que ce soit le comportement par defaut de _secure_api
+        Par contre... je m'interroge sur le comportement de swag'n co
+        """
+        if uri in self.api_routes[verb][uri]:
+            self.api_routes[verb][uri]['func']=None
+
+    def api_lst(self):
+        """ 
+        Format des routes
+        uri func html verb  await (et on rajoutede suite s'il faut un await)
+        """
+        ret={}
+        for verb in self.api_routes.keys():
+            ret[verb]=[]
+            for uri in self.api_routes[verb].keys():
+                if self.api_routes[verb][uri]:
+                    ret[verb].append(uri)
+        
+    def _secure_api_tab(self, verb,uri):
+        async def wrapper(request: Request):
+            if not self.api_routes[verb].get(uri,None) or not self.api_routes[verb][uri]['func']:
+                return JSONResponse( status_code=404, content={"detail": "Ressource introuvable"})
+                #return HTMLResponse(content= "<h1>404 - Page non trouvée</h1>", status_code=404)
+
+            varSession = request.session.get("user")
+            if not varSession:
+                varSession={}
+            # 🔍 Détection de la méthode HTTP
+            #verb = request.method
+            #uri  = request.url.path
+            print(f"✅ wrapper {verb} {uri} réussie : {varSession}")
+            #print(f"💡 request : {request.path_params}")
+            varSession['verb']=verb
+            if verb=="POST":
+                varSession['form']=dict(await request.form())
+
+            ### On doit trouver la fonction, etc...
+            # Appel dynamique a la fonction cible, avec tout les parametres
+            #if inspect.iscoroutinefunction(func):
+            if self.api_routes[verb][uri]['await']:
+                result=await self.api_routes[verb][uri]['func'](varSession=varSession,params=request.path_params)
+            else:
+                result=      self.api_routes[verb][uri]['func'](varSession=varSession,params=request.path_params)
+
+            if not isinstance(result,dict):
+                1
+            elif 'template' in result.keys():
+                nextstep=result
+                nextstep['request']=request
+                if 'template_data' in result.keys():
+                    for k in result['template_data'].keys():
+                        nextstep[k]=result['template_data'][k]
+                #nextstep['refresh_interval']=1000
+                nextstep['name']=varSession.get("name",None)
+                #print('👽️ resul ta da')
+                #print(result.keys())
+                templateid='base'
+                if 'templateid' in result.keys():
+                    templateid=result['templateid']
+                if  self.api_routes[verb][uri]['html']:
+                    return self.templates[templateid].TemplateResponse(result['template'],nextstep)
+                    return HTMLResponse(self.templates[templateid].TemplateResponse(result['template'],nextstep))
+                else:
+                    return JSONResponse(self.templates[templateid].TemplateResponse(result['template'],nextstep))
+            elif 'redirect' in result.keys():
+                #return await self.auth.authentik.authorize_redirect(request, result['redirect'])
+                return RedirectResponse(url=result['redirect'],status_code=303)
+            else:
+                #print('👽️ result')
+                #print(result)
+                return(result)
+        return wrapper
+
+    def api(self, uri: str, func: Callable,html:bool=True,verb:str="GET"):
+        self.api_add(uri, func,html,verb)
+        
+    def apiii(self, uri: str, func: Callable,html:bool=False,verb:str="get"):
         #print(f'Adding route {verb} {uri} : {html}')
         #self.api_routes[uri] = func
         #self.app.get(uri)(self._secure_api(func))
