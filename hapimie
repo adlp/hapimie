@@ -430,7 +430,7 @@ for route,func in apiFunc:
     app.api(route,func,html=False)
 
 for route,func in apiPostFunc:
-    app.api(route,func,html=False,verb="post")
+    app.api(route,func,html=False,verb="POST")
 
 
 ##########################################################################################
