@@ -470,6 +470,22 @@ class Pano:
         else:
             return(None)
 
+    async def originate(self,Channel,Exten=None,Context=None,Priority=None,Application=None,Data=None,Timeout=None,
+            CallerID=None,Variable=None,Account=None,EarlyMedia=None,Async=None,Codecs=None,ChannelId=None,OtherChannelId=None):
+        print('PINK ALERTE PINK ALERTE')
+        hero={}
+        hero['Action']='Originate'
+        print('⚡️')
+        for key,value in {"Channel":Channel,"Exten":Exten,"Context":Context,"Priority":Priority,"Application":Application,"Data":Data,"Timeout":Timeout,
+                "CallerID":CallerID,"Variable":Variable,"Account":Account,"EarlyMedia":EarlyMedia,"Async":Async,"Codecs":Codecs,"ChannelId":ChannelId,"OtherChannelId":OtherChannelId}.items():
+            if value is not None:
+                hero[key]=value
+        print('⚡️')
+        print(hero)
+        resp=hero
+        #resultat=await self.action(hero)
+        return(resp)
+
     ####### PROTOCOL !!!!!
     def startup(self):
         print("Connexion a l'AMI")
