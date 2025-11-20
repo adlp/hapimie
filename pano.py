@@ -58,6 +58,9 @@ class Pano:
                     self.cache=result
                 self.timeput=time()
 
+        async def reloadCache(self):
+            self._tryOrGet(Force=True)
+
         def _getRecursif(self,keys,cache={}):
             if keys[1:] in cache.keys:
                 if len(keys)>1:
@@ -457,12 +460,13 @@ class Pano:
         elif self.db_get(key) and "/" in key:
             print(f'DBSET db[{key}]={value}')
             cutted=key.split('/')
-            family=cutted[:-1]
-            k=cutted[-1]
+            family='/'.join(cutted[:-1])
+            k=str(cutted[-1])
             hero = {'Action':"DBPut","Family":family,'Key':k,'Val':value}
             print(hero)
-            return(hero)
-            return(await self.action(hero))
+            ret=await self.action(hero)
+            self._db.reloadCache()
+            return(ret)
         else:
             return(None)
 
