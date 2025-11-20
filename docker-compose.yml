@@ -1,0 +1,28 @@
+services:
+  astech:
+    image: python:3.8
+    container_name: ${PROJECT}
+    hostname: ${PROJECT}
+    volumes:
+      # Fichier de conf
+      # Repertoire hapipmi
+      # requierement
+      - ${DOHAPIMIEKERNEL}:/srv/hapimie/kernel:ro
+      - ${DOHAPIMIEASTEC}:/srv/hapimie/astech:ro
+      - ${DOHAPIMIECFG}:/usr/local/etc/hapimie.cfg:ro
+    ports:
+      - "${BIND:-0.0.0.0:8888}:8888"
+#    env_file:
+#      - ../.env
+    restart: always
+    working_dir: /srv/hapimie/kernel
+    #command: /bin/bash -c "pip install -r requirements.txt && /srv/hapimie/kernel/hapimie"
+    command: /bin/bash -c "pip install -r requirements.txt && ${RUNIT:-/srv/hapimie/kernel/hapimie}"
+#    logging:
+#      driver: syslog
+#      options:
+#        syslog-address: udp://127.0.0.1:514
+#        syslog-format: "rfc3164"
+#        syslog-facility: local0
+#        tag: ${PROJECT}
+

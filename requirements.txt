@@ -1,0 +1,7 @@
+panoramisk
+fastapi
+uvicorn
+authlib
+httpx
+itsdangerous
+jinja2
