@@ -196,13 +196,13 @@ class Zapiz:
             self.api_routes[verb][u]['html']=html
             self.api_routes[verb][u]['await']=fncAsync
 
-    def api_del(self, uri: str, verb:str="get"):
+    def api_del(self, uri: str, verb:str="GET"):
         """ 
         On ne supprime jamais un URI, on la fait pointer sur une 404 (merci fastapi...)
         Bon en fait, suffit que ce soit le comportement par defaut de _secure_api
         Par contre... je m'interroge sur le comportement de swag'n co
         """
-        if uri in self.api_routes[verb][uri]:
+        if uri in self.api_routes[verb]:
             self.api_routes[verb][uri]['func']=None
 
     def api_lst(self):
@@ -216,6 +216,7 @@ class Zapiz:
             for uri in self.api_routes[verb].keys():
                 if self.api_routes[verb][uri]:
                     ret[verb].append(uri)
+        return(ret)
         
     def _secure_api_tab(self, verb,uri):
         async def wrapper(request: Request):
