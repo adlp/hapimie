@@ -68,7 +68,9 @@
   async function loadRawHelp() {
     const res = await fetch(`/api/help/${help}`);
     const data = await res.json();
-    document.getElementById("raw-content").textContent = JSON.stringify(data, null, 2);
+    const json = JSON.stringify(data, null, 2);
+    const ssgui = json.replace(/\"([^"]+)\":/g, '$1:').replace(/\"/g, '');
+    document.getElementById("raw-content").textContent = ssgui;
   }
 
   document.getElementById("help-form").addEventListener("submit", async (e) => {
