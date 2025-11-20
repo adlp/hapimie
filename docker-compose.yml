@@ -7,7 +7,7 @@ services:
       # Fichier de conf
       # Repertoire hapipmi
       # requierement
-      - ${DOHAPIMIEKERNEL}:/srv/hapimie/kernel:ro
+      - ${DOHAPIMIEKERNEL}:/srv/hapimie/hapimie:ro
       - ${DOHAPIMIEASTEC}:/srv/hapimie/astech:ro
       - ${DOHAPIMIECFG}:/usr/local/etc/hapimie.cfg:ro
     ports:
@@ -15,9 +15,9 @@ services:
 #    env_file:
 #      - ../.env
     restart: always
-    working_dir: /srv/hapimie/kernel
+    working_dir: /srv/hapimie/${APPLI:-hapimie}
     #command: /bin/bash -c "pip install -r requirements.txt && /srv/hapimie/kernel/hapimie"
-    command: /bin/bash -c "pip install -r requirements.txt && ${RUNIT:-/srv/hapimie/kernel/hapimie}"
+    command: /bin/bash -c "pip install -r /srv/hapimie/hapimie/requirements.txt && /srv/hapimie/${APPLI:-hapimie}/${APPLI:-hapimie}"
 #    logging:
 #      driver: syslog
 #      options:
