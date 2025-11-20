@@ -25,7 +25,7 @@ class Pano:
         # Queue variables
         self._queues=self.Cache(self._feed_queues,timeout=5)
         # DBVars
-        self._db=self.Cache(self._feed_db,splitKeyKey="/",timeout=5)
+        self._db=self.Cache(self._feed_db,splitKeyKey="/",timeout=1)
         self._db_hidden=['subscription_persistence','registrar','CustomPresence','CustomDevstate','pbx']
 
         #self.cache=self.Cache(self)
@@ -450,6 +450,21 @@ class Pano:
         else:
             return({ key:ret[key]})
 
+    async def db_set(self,key,value):
+        print('🚒')
+        if not(len(key)):
+            return(None)
+        elif self.db_get(key) and "/" in key:
+            print(f'DBSET db[{key}]={value}')
+            cutted=key.split('/')
+            family=cutted[:-1]
+            k=cutted[-1]
+            hero = {'Action':"DBPut","Family":family,'Key':k,'Val':value}
+            print(hero)
+            return(hero)
+            return(await self.action(hero))
+        else:
+            return(None)
 
     ####### PROTOCOL !!!!!
     def startup(self):
