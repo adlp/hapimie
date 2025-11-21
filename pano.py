@@ -428,7 +428,7 @@ class Pano:
             courant[cles[-1]]=valeur
         return(resultat)
 
-    async def db_get(self,key=None,hidden=None):
+    async def db_get(self,key=None,hidden=None,idx=True):
         print('💽')
 
         ret=await self._db.dict()
@@ -449,15 +449,20 @@ class Pano:
                     courant=courant[cle]
                 elif cle not in courant:
                     return(None)
+            #if not idx:
+            #    return(courant)
             return({ key:courant})
         else:
+            if not idx:
+                return(ret[key])
             return({ key:ret[key]})
 
     async def db_set(self,key,value):
-        print('🚒')
+        print('🚒 db_set')
         if not(len(key)):
             return(None)
-        elif await self.db_get(key) and "/" in key:
+        #elif await self.db_get(key) and "/" in key:
+        else:
             print(f'DBSET db[{key}]={value}')
             cutted=key.split('/')
             family='/'.join(cutted[:-1])
@@ -467,8 +472,8 @@ class Pano:
             ret=await self.action(hero)
             await self._db.reloadCache()
             return(ret)
-        else:
-            return(None)
+        #else:
+        #    return(None)
 
     async def originate(self,Channel,Exten=None,Context=None,Priority=None,Application=None,Data=None,Timeout=None,
             CallerID=None,Variable=None,Account=None,EarlyMedia=None,Async=None,Codecs=None,ChannelId=None,OtherChannelId=None):
@@ -482,9 +487,10 @@ class Pano:
                 hero[key]=value
         print('⚡️')
         print(hero)
-        resp=hero
-        #resultat=await self.action(hero)
-        return(resp)
+        resultat=await self.action(hero)
+        print(resultat)
+        print('⚡️⚡️')
+        return(resultat)
 
     ####### PROTOCOL !!!!!
     def startup(self):
