@@ -64,6 +64,22 @@ class Zapiz:
         if startup:
             self.app.on_event("startup")(startup)
 
+        if int(os.getenv('HAPIMIE_DEBUG',0))==1:
+            @self.app.get("/debug")
+            async def shutdown():
+                # On prépare la redirection
+                response = RedirectResponse(url="/")
+
+                # On déclenche l’arrêt du serveur après avoir renvoyé la réponse
+                # Ici on utilise un petit "truc" : on planifie l’arrêt dans un thread séparé
+                import threading
+                import signal
+                def stop_server():
+                    os.kill(os.getpid(), signal.SIGINT)  # arrêt propre
+                threading.Timer(1.0, stop_server).start()
+
+                return response
+
     def run(self):
         uvicorn.run(self.app, host=self.host, port=self.port)
 
