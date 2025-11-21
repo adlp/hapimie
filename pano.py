@@ -457,7 +457,7 @@ class Pano:
         print('🚒')
         if not(len(key)):
             return(None)
-        elif self.db_get(key) and "/" in key:
+        elif await self.db_get(key) and "/" in key:
             print(f'DBSET db[{key}]={value}')
             cutted=key.split('/')
             family='/'.join(cutted[:-1])
@@ -465,7 +465,7 @@ class Pano:
             hero = {'Action':"DBPut","Family":family,'Key':k,'Val':value}
             print(hero)
             ret=await self.action(hero)
-            self._db.reloadCache()
+            await self._db.reloadCache()
             return(ret)
         else:
             return(None)
