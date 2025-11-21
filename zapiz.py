@@ -234,7 +234,13 @@ class Zapiz:
             #print(f"💡 request : {request.path_params}")
             varSession['verb']=verb
             if verb=="POST":
-                varSession['form']=dict(await request.form())
+                content_type = request.headers.get("content-type", "")
+                if "application/json" in content_type:
+                    varSession['form'] = await request.json()
+                elif "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
+                    varSession['form'] = dict(await request.form())
+                else:
+                    varSession['form'] = {}
 
             ### On doit trouver la fonction, etc...
             # Appel dynamique a la fonction cible, avec tout les parametres
