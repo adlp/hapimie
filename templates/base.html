@@ -46,7 +46,16 @@
 </script>
 {% endif %}
   <div class="header">
-    <div><a href="/">🏠 Accueil</a> <a href="/ligne">☎️ </a><a href="/queue">🐍</a><a href="/endpoints">📞</a><a href="/help">🔍</a></div>
+    <div>
+        {% if Debug == 1 %}
+        <a href="/debug">☠️ </a>
+        {% endif %}
+        <a href="/">🏠 Accueil</a>
+        <a href="/ligne">☎️ </a>
+        <a href="/queue">🐍</a>
+        <a href="/endpoints">📞</a>
+        <a href="/help">🔍</a>
+        </div>
     <div style="text-align:right; margin-bottom:10px;">
     {% if name %}
         👤 Connecté en tant que <strong>{{ name }}</strong> |
