@@ -13,7 +13,7 @@ services:
     ports:
       - "${BIND:-0.0.0.0:8888}:8888"
     env_file:
-      - ${DOHAPIMIECFG}/hapimie-env.cfg
+      - ${DOHAPIMIEENV}
     restart: always
     working_dir: /srv/hapimie/${APPLI:-hapimie}
     #command: /bin/bash -c "pip install -r requirements.txt && /srv/hapimie/kernel/hapimie"
