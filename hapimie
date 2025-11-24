@@ -14,7 +14,7 @@ parser = argparse.ArgumentParser(
     description="Happy l'api amie de l'AMI"
     )
 parser.add_argument("--cfgfile", default="/usr/local/etc/hapimie.cfg", help="Specify a config file")
-parser.add_argument("--name", default="default", help="Specify a config file")
+parser.add_argument("--name", default="default", help="Specify a part of a config file")
 
 # 🧩 Analyse des arguments
 args,unknown = parser.parse_known_args()
@@ -25,16 +25,6 @@ if unknown:
     parser.print_help()
     sys.exit(1)
 
-if os.path.exists(args.cfgfile) and os.path.isfile(args.cfgfile):
-    config= configparser.ConfigParser()
-    config.optionxform=str
-    config.read(args.cfgfile)
-    if args.name not in config.keys():
-        print(f'No {args.name} in {args.cfgfile}... OOOoooops')
-        sys.exit(1)
-else:
-    print(f'No {args.cfgfile}.... Kouik')
-    sys.exit(1)
 
 cfg={}
 cfg['API_PORT']= 8888
@@ -53,14 +43,30 @@ cfg['AUTHENTIK_ENABLED']= False
 cfg['AUTHENTIK_TOKEN_URL']= "https://authentik.example.com/application/o/token/"
 cfg['AUTHENTIK_CLIENT_ID']= "your-client-id"
 cfg['AUTHENTIK_CLIENT_SECRET']= "your-client-secret"
-cfg['SENTRY_DSN']=""
+cfg['SENTRY_DSN']=None
 cfg['OIDC_CLIENT_ID']=None
 cfg['OIDC_CLIENT_SECRET']=None
 cfg['OIDC_ISSUER']=None
-for elem in cfg.keys():
-    if elem not in config[args.name]:
-        continue
-    cfg[elem]=config[args.name][elem]
+
+if os.path.exists(args.cfgfile) and os.path.isfile(args.cfgfile):
+    config= configparser.ConfigParser()
+    config.optionxform=str
+    config.read(args.cfgfile)
+    if args.name not in config.keys():
+        print(f'No {args.name} in {args.cfgfile}... OOOoooops')
+        sys.exit(1)
+    for elem in cfg.keys():
+        if elem not in config[args.name]:
+            continue
+        cfg[elem]=config[args.name][elem]
+elif os.getenv('AMI_HOST',None):
+    for elem in cfg.keys():
+        cfg[elem]=os.getenv(elem,cfg[elem])
+else:
+    print(f'No {args.cfgfile}.... Kouik')
+    sys.exit(1)
+
+
 for elem in ['API_PORT','AMI_PORT','MAX_RETRIES','RETRY_DELAY']:
     i=cfg[elem]
     cfg[elem]=int(i)
@@ -68,14 +74,14 @@ for elem in ['TOKEN_EXPIRY_HOURS']:
     i=cfg[elem]
     cfg[elem]=float(i)
 
-if 'SENTRY_DSN' in cfg.keys() and len(cfg['SENTRY_DSN']) and 1==2:
+if 'SENTRY_DSN' in cfg.keys():
     print("Sentry Enabling")
     import sentry_sdk
 
     sentry_sdk.init(
         dsn=cfg['SENTRY_DSN'],
         environment="production",
-        release="hapimie@2.0",
+        release="hapimie@3.0",
         # Add data like request headers and IP for users,
         # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
         send_default_pii=True,

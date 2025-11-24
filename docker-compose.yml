@@ -9,7 +9,7 @@ services:
       # requierement
       - ${DOHAPIMIEKERNEL}:/srv/hapimie/hapimie:ro
       - ${DOHAPIMIEASTEC}:/srv/hapimie/astech:ro
-      - ${DOHAPIMIECFG}:/usr/local/etc/hapimie.cfg:ro
+      #- ${DOHAPIMIECFG}:/usr/local/etc/hapimie.cfg:ro
     ports:
       - "${BIND:-0.0.0.0:8888}:8888"
     env_file:
