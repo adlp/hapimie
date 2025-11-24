@@ -188,7 +188,7 @@ class Zapiz:
             user = self._verify_token(token)
             return self.templates.TemplateResponse(template_path, {"request": request, "user": user})
 
-    def api_add(self, uri: str, func: Callable,html:bool=True,verb:str="GET"):
+    def api_add(self, uri: str, func: Callable,html:bool=True,verb:str="GET",acl=None):
         """ 
         Format des routes
         uri func html verb  await (et on rajoutede suite s'il faut un await)
@@ -211,6 +211,7 @@ class Zapiz:
             self.api_routes[verb][u]['func']=func
             self.api_routes[verb][u]['html']=html
             self.api_routes[verb][u]['await']=fncAsync
+            self.api_routes[verb][u]['acl']=acl
 
     def api_del(self, uri: str, verb:str="GET"):
         """ 
@@ -257,6 +258,14 @@ class Zapiz:
                     varSession['form'] = dict(await request.form())
                 else:
                     varSession['form'] = {}
+
+            if self.api_routes[verb][uri]['acl']:
+                #Gestion des droits....
+                if not('groups' in varSession.keys() and self.api_routes[verb][uri]['acl'] in varSession['groups']):
+                    if self.api_routes[verb][uri]['html']:
+                        return HTMLResponse(content= f"<h1>403 - Page non trouvée {self.api_routes[verb][uri]['acl']}</h1>", status_code=404)
+                    else:
+                        return JSONResponse( status_code=403, content={"detail": "Ressource introuvable"})
 
             ### On doit trouver la fonction, etc...
             # Appel dynamique a la fonction cible, avec tout les parametres

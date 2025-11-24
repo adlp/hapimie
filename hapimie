@@ -43,7 +43,10 @@ cfg['TOKEN_EXPIRY_HOURS']= 2
 cfg['SENTRY_DSN']=None
 cfg['OIDC_CLIENT_ID']=None
 cfg['OIDC_CLIENT_SECRET']=None
+
 cfg['OIDC_ISSUER']=None
+cfg['HAPACL_FULL']=None
+cfg['HAPACL_Status']=None
 
 if os.path.exists(args.cfgfile) and os.path.isfile(args.cfgfile):
     config= configparser.ConfigParser()
@@ -114,24 +117,22 @@ def form_view(varSession,params={}):
     print(varSession)
     nom=params.get('nom',None)
     ret={}
-    if varSession and varSession.get('nickname'):
-        print(f"🎯 Auth, et cmd :{nom}")
-        ret={
-            "command_name": nom,
-            "login": varSession["nickname"],
-            "gecos": varSession["email"],
-            #"sentry_dsn": cfg.get("SENTRY_DSN"),
-            }
-        return ({'template':"json.html",'varSession': ret })
-    else:
-        return({'redirect':'/login'})
+
+    print(f"🎯 Auth, et cmd :{nom}")
+    ret={
+        "command_name": nom,
+        "login": varSession["nickname"],
+        "gecos": varSession["email"],
+        #"sentry_dsn": cfg.get("SENTRY_DSN"),
+        }
+    return ({'template':"json.html",'varSession': ret })
 
 async def api_help_exec(varSession,params={}):
     #form = await request.form()
     #user = request.session.get("user")
     data=varSession['form']
 
-    if 'preferred_username' in varSession.keys() and 'Action' in data.keys():
+    if 'Action' in data.keys():
         ret=await asti.action(data)
         response = {
             "Response": "Success",
@@ -179,8 +180,6 @@ async def api_status(varSession,params={}):
     """
     Renvoie le status.... hmmmm ca ressemble a un coreshowchannel
     """
-    if not 'preferred_username' in varSession.keys():
-        return({ "Channels": {}, "Phones": {}, "Caller": {} })
 
     ret=await asti.channels()
     ## TODO gerer les droits ici
@@ -191,10 +190,6 @@ async def api_hangup(varSession,params={}):
     """
     Permet de raccrocher le channel en cours
     """
-    if not 'preferred_username' in varSession.keys():
-        #raise HTTPException(status_code=403)
-        return(None)
-
     chan=params.get("channel_id",None)
     ret=await asti.channel_del(chan)
     if ret is None:
@@ -203,16 +198,10 @@ async def api_hangup(varSession,params={}):
     return(ret)
 
 async def api_endpoints(varSession,params={}):
-    if not 'preferred_username' in varSession.keys():
-        #raise HTTPException(status_code=403)
-        return(None)
     ret=await asti.endpoints()
     return(ret)
 
 async def api_endpointPerGrp(varSession,params={}):
-    if not 'preferred_username' in varSession.keys():
-        #raise HTTPException(status_code=403)
-        return(None)
     ret=await asti.endpointsGrp()
     return(ret)
 
@@ -221,15 +210,9 @@ async def api_endpointPerGrp(varSession,params={}):
 def form_ligne(varSession,params={}):
     refresh_interval = 1000  # en millisecondes
 
-    if 'preferred_username' in varSession.keys():
-        return ({'template':"ligne.html",'varSession': varSession,'template_data':{'refresh_interval':refresh_interval }})
-    else:
-        return({'redirect':'/login'})
+    return ({'template':"ligne.html",'varSession': varSession,'template_data':{'refresh_interval':refresh_interval }})
 
 async def api_queues(varSession,params={}):
-    if not 'preferred_username' in varSession.keys():
-        #raise HTTPException(status_code=403)
-        return(None)
     ret=await asti.queues()
     return(ret)
 
@@ -248,18 +231,12 @@ async def form_queues(varSession,params={}):
     """
     refresh_interval = 5000  # en millisecondes
 
-    if 'preferred_username' in varSession.keys():
-        return ({'template':"queue.html",'varSession': varSession,'template_data':{'refresh_interval':refresh_interval }})
-    else:
-        return({'redirect':'/login'})
+    return ({'template':"queue.html",'varSession': varSession,'template_data':{'refresh_interval':refresh_interval }})
 
 async def api_dbGet(varSession,params={}):
     """
     On affiche le contenu de la db
     """
-    if not 'preferred_username' in varSession.keys():
-        #raise HTTPException(status_code=403)
-        return(None)
     key=params.get('path',None)
     ret=await asti.db_get(key)
     return(ret)
@@ -270,39 +247,26 @@ async def form_dbview(varSession,params={}):
     """
     Affichage pour lecture, modification et suppression d'enregistrement dans la DB d'Asterisk
     """
-    if 'preferred_username' in varSession.keys():
-        return ({'template':"dbview.html",'varSession': varSession})
-    else:
-        return({'redirect':'/login'})
+    return ({'template':"dbview.html",'varSession': varSession})
 
 #async def db_put(request: Request,user=Depends(get_user_from_cookie)):
 async def api_dbPut(varSession,params={}):
     data = dict(form)
     data["Action"] = form.get("Action")
 
-    if 'preferred_username' not in varSession.keys():
-        return(None)
     family, key = data['Attribut'].split("/", 1)
     hero={'Action':'DbPut','family':family,'key':key,'val':data['Val']}
-    if len(user['login']):
-        ret=await action(hero)
 
-        response = {
-            "Response": "Success",
-            "Message": f"Commande {data['Action']} exécutée",
-            "Data": data,
-            "Action": hero,
-            'Retour': ret
-        }
-        tocache('database',{},0.1)
-    else:
-        response = {
-            "Response": "Failure",
-            "Message": f"No authentification",
-            "Data": data,
-            "Action": hero,
-            'Retour': {}
-        }
+    ret=await action(hero)
+
+    response = {
+        "Response": "Success",
+        "Message": f"Commande {data['Action']} exécutée",
+        "Data": data,
+        "Action": hero,
+        'Retour': ret
+    }
+    tocache('database',{},0.1)
 
     return(response)
 
@@ -316,41 +280,28 @@ async def api_Dbdel(varSession,params={}):
     family, key = data['Attribut'].split("/", 1)
     hero={'Action':'DbDel','family':family,'key':key}
 
-    if len(user['login']):
-        ret=await action(hero)
+    ret=await action(hero)
 
-        response = {
-            "Response": "Success",
-            "Message": f"Commande {data['Action']} exécutée",
-            "Data": data,
-            "Action": hero,
-            'Retour': ret
-        }
-        tocache('database',{},0.1)
-    else:
-        response = {
-            "Response": "Failure",
-            "Message": "No authentification",
-            "Data": data,
-            "Action": hero,
-            'Retour': {}
-        }
+    response = {
+        "Response": "Success",
+        "Message": f"Commande {data['Action']} exécutée",
+        "Data": data,
+        "Action": hero,
+        'Retour': ret
+    }
+    tocache('database',{},0.1)
 
     return(response)
 
 #async def dial_page(request: Request, login=Depends(get_user_from_cookie)):
 async def form_dial(varSession,params={}):
-    if 'preferred_username' in varSession.keys():
-        return ({'template':"dial.html",'varSession': varSession})
-    else:
-        return({'redirect':'/login'})
+    return ({'template':"dial.html",'varSession': varSession})
 
 
 async def showtrack(varSession,params={}):
     user = request.session.get("user")
     data = await request.json()
-    if len(user['login']) == 0:
-        return({})
+
     return(trackeurAMI)
 
 #async def dial_api(request: Request, user=Depends(get_user_from_cookie)):
@@ -359,8 +310,7 @@ async def dial_api(varSession,params={}):
     user = request.session.get("user")
     appellant = data.get("appellant")
     numero = data.get("numero")
-    if len(user['login']) == 0:
-        return {"status": "KO", "login": user['login'], "appellant": appellant, "numero": numero}
+
     ti=f'{appellant}-{numero}'
     if ti in trackeurAMI['Originate'].keys():
         print("Oulla c'est le dawa je ne sais pas encore gerer les bis,alors je raccrocerais l'autre et je relancerais")
@@ -382,51 +332,37 @@ async def dial_api(varSession,params={}):
 def funNull(varSession=None,params=None):
     1
 
-webFunc=[
-    ("/",form_home),
-    ("/json",form_view),
-    ("/json/",form_view),
-    ("/json/{nom}",form_view),
-    ("/help",form_help),
-    ("/help/{nom}",form_help_detail),
-    ("/ligne",form_ligne),
-    ("/endpoints",form_endpoints),
-    ("/endpoints/{nom}",form_endpoints),
-    ("/endpoints/{nom}/{groupe}",form_endpoints),
-    ("/queue",form_queues),
-    ("/dbview",form_dbview),
-#    ("/dial", dial_page),
-    ("/favicon.ico",funNull),
-    ]
-apiFunc=[
-    (f"{cfg['API_PATH']}/help",api_help),
-    (cfg['API_PATH']+"/help/{command}",api_help),
-    (f"{cfg['API_PATH']}/status",api_status),
-    (f"{cfg['API_PATH']}/queue",api_queues),
-    (f"{cfg['API_PATH']}/endpoints",api_endpoints),
-    (f"{cfg['API_PATH']}/endpointPerGrp",api_endpointPerGrp),
-    (f"{cfg['API_PATH']}/dbGet",api_dbGet),
-    (f"{cfg['API_PATH']}/dbGet/"+"{path:path}",api_dbGet),
-#    (f"{cfg['API_PATH']}/myphones",get_myphones),
-#    (f"{cfg['API_PATH']}/trackeur",showtrack),
-    ]
-apiPostFunc=[
-    (cfg['API_PATH']+"/help-exec",api_help_exec), #POST
-    (cfg['API_PATH']+"/HangUp",api_hangup), # POST
-#    (cfg['API_PATH']+"/dbPut",db_put), # POST
-#    (cfg['API_PATH']+"/dbDel",db_del), # POST
-#    (f"{cfg['API_PATH']}/dial",dial_api), # POST
-    ]
+app.api_add("/",form_home),
+app.api_add("/json",form_view,acl=cfg['HAPACL_FULL']),
+app.api_add("/json/{nom}",form_view,acl=cfg['HAPACL_FULL']),
+app.api_add("/help",form_help),
+app.api_add("/help/{nom}",form_help_detail),
+app.api_add("/ligne",form_ligne,acl=cfg['HAPACL_Status']),
+app.api_add("/endpoints",form_endpoints,acl=cfg['HAPACL_Status']),
+app.api_add("/endpoints/{nom}",form_endpoints,acl=cfg['HAPACL_Status']),
+app.api_add("/endpoints/{nom}/{groupe}",form_endpoints,acl=cfg['HAPACL_FULL']),
+app.api_add("/queue",form_queues,acl=cfg['HAPACL_Status']),
+app.api_add("/dbview",form_dbview,acl=cfg['HAPACL_FULL']),
+#    app.api_add("/dial", dial_page),
+app.api_add("/favicon.ico",funNull),
 
+app.api_add(f"{cfg['API_PATH']}/help",api_help,html=False)
+app.api_add(cfg['API_PATH']+"/help/{command}",api_help,html=False)
+app.api_add(f"{cfg['API_PATH']}/status",api_status,html=False,acl=cfg['HAPACL_Status'])
+app.api_add(f"{cfg['API_PATH']}/queue",api_queues,html=False,acl=cfg['HAPACL_Status'])
+app.api_add(f"{cfg['API_PATH']}/endpoints",api_endpoints,html=False,acl=cfg['HAPACL_Status'])
+app.api_add(f"{cfg['API_PATH']}/endpointPerGrp",api_endpointPerGrp,html=False,acl=cfg['HAPACL_Status'])
+app.api_add(f"{cfg['API_PATH']}/dbGet",api_dbGet,html=False,acl=cfg['HAPACL_FULL'])
+app.api_add(f"{cfg['API_PATH']}/dbGet/"+"{path:path}",api_dbGet,html=False,acl=cfg['HAPACL_FULL'])
+#    app.api_add(f"{cfg['API_PATH']}/myphones",get_myphones,html=False)
+#    app.api_add(f"{cfg['API_PATH']}/trackeur",showtrack,html=False)
 
-for route,func in webFunc:
-    app.api_add(route,func)
+app.api_add(cfg['API_PATH']+"/help-exec",api_help_exec,html=False,verb="POST",acl=cfg['HAPACL_FULL']) #POST
+app.api_add(cfg['API_PATH']+"/HangUp",api_hangup,html=False,verb="POST",acl=cfg['HAPACL_FULL']) # POST
+#    app.api_add(cfg['API_PATH']+"/dbPut",db_put,html=False,verb="POST") # POST
+#    app.api_add(cfg['API_PATH']+"/dbDel",db_del,html=False,verb="POST") # POST
+#    app.api_add(f"{cfg['API_PATH']}/dial",dial_api,html=False,verb="POST") # POST
 
-for route,func in apiFunc:
-    app.api_add(route,func,html=False)
-
-for route,func in apiPostFunc:
-    app.api_add(route,func,html=False,verb="POST")
 
 
 ##########################################################################################
