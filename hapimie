@@ -428,13 +428,13 @@ apiPostFunc=[
 
 
 for route,func in webFunc:
-    app.api(route,func)
+    app.api_add(route,func)
 
 for route,func in apiFunc:
-    app.api(route,func,html=False)
+    app.api_add(route,func,html=False)
 
 for route,func in apiPostFunc:
-    app.api(route,func,html=False,verb="POST")
+    app.api_add(route,func,html=False,verb="POST")
 
 
 ##########################################################################################

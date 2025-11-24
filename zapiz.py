@@ -295,25 +295,6 @@ class Zapiz:
                 return(result)
         return wrapper
 
-    def api(self, uri: str, func: Callable,html:bool=True,verb:str="GET"):
-        self.api_add(uri, func,html,verb)
-        
-    def apiii(self, uri: str, func: Callable,html:bool=False,verb:str="get"):
-        #print(f'Adding route {verb} {uri} : {html}')
-        #self.api_routes[uri] = func
-        #self.app.get(uri)(self._secure_api(func))
-        #self.app.add_api_route(uri,self._secure_api(func),methods=["GET"], response_class=HTMLResponse)
-        response_class = HTMLResponse if html else JSONResponse
-        if uri[-1] != "/":
-            if verb=="get":
-                self.app.get(uri+"/", response_class=response_class)(self._secure_api(func))
-            elif verb=="post":
-                self.app.post(uri+"/", response_class=response_class)(self._secure_api(func))
-        if verb=="get":
-            self.app.get(uri, response_class=response_class)(self._secure_api(func))
-        elif verb=="post":
-            self.app.post(uri, response_class=response_class)(self._secure_api(func))
-
     def _secure_api(self, func: Callable):
         #async def wrapper(request: Request,nom:str=None,token: str = Depends(self.oauth2_scheme)):
         async def wrapper(request: Request):
