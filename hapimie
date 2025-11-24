@@ -36,7 +36,8 @@ cfg['AMI_USER']= "asterisk"
 cfg['AMI_PASS']= "Sangoku"
 cfg['MAX_RETRIES']= 3
 cfg['RETRY_DELAY']= 3  # secondes
-cfg['SECRET_KEY']= "supersecretkey"
+
+cfg['SECRET_KEY']= "your-secret-key"
 cfg['ALGORITHM']= "HS256"
 cfg['TOKEN_EXPIRY_HOURS']= 2
 cfg['SENTRY_DSN']=None
@@ -97,6 +98,7 @@ app = Zapiz(
     oidc_client_id=cfg['OIDC_CLIENT_ID'],
     oidc_client_secret=cfg['OIDC_CLIENT_SECRET'],
     oidc_issuer=cfg['OIDC_ISSUER'],
+    secret_key=cfg['SECRET_KEY'],
     startup=asti.startup
     )
 
