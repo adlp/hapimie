@@ -6,3 +6,4 @@ httpx
 itsdangerous
 jinja2
 python-multipart
+sentry_sdk
