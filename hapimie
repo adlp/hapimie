@@ -103,7 +103,7 @@ app = Zapiz(
     )
 
 
-def home(varSession,params={}):
+def form_home(varSession,params={}):
 #, user=Depends(get_user_from_cookie)):
     print(f"🈁 Ici on est")
 
@@ -383,7 +383,7 @@ def funNull(varSession=None,params=None):
     1
 
 webFunc=[
-    ("/",home),
+    ("/",form_home),
     ("/json",form_view),
     ("/json/",form_view),
     ("/json/{nom}",form_view),
