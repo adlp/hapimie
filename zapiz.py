@@ -29,7 +29,7 @@ import inspect
 class Zapiz:
     def __init__(self, host: str="127.0.0.1", port: int=8080,
             startup: Callable=None,
-            oidc_client_id=None, oidc_client_secret=None, oidc_issuer=None, oidc_scopes="openid profile email groups",
+            oidc_client_id=None, oidc_client_secret=None, oidc_issuer=None, oidc_scopes="openid profile email groups", oidc_root=None,
             secret_key="your-secret-key",
             title=None, description=None, version= None, docs_url=None, redoc_url=None, openapi_url=None,
             template_dir="templates",static_dir="static",token_url="token",root=os.path.abspath(os.getcwd())+"/"):
@@ -55,6 +55,7 @@ class Zapiz:
                 client_kwargs={'scope':oidc_scopes}
                 )
             self.setup_auth_routes()
+            self.oidc_root=oidc_root
         else:
             self.auth=None
         ##self.app.include_router(self.auth.router,prefix="/auth")
@@ -124,6 +125,10 @@ class Zapiz:
         async def logout(request: Request):
             request.session.clear()
             #return RedirectResponse(url="/",status_code=202)
+            if self.oidc_root:
+                print("🔫 oidc root given")
+                return RedirectResponse(url=self.oidc_root)
+            print("🔫 oidc root not given")
             return RedirectResponse(url="/")
         
         @self.app.get("/whoami")
