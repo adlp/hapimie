@@ -18,11 +18,11 @@ services:
     working_dir: /srv/hapimie/${APPLI:-hapimie}
     #command: /bin/bash -c "pip install -r requirements.txt && /srv/hapimie/kernel/hapimie"
     command: /bin/bash -c "pip install -r /srv/hapimie/hapimie/requirements.txt && /srv/hapimie/${APPLI:-hapimie}/${APPLI:-hapimie}"
-#    logging:
-#      driver: syslog
-#      options:
-#        syslog-address: udp://127.0.0.1:514
-#        syslog-format: "rfc3164"
-#        syslog-facility: local0
-#        tag: ${PROJECT}
+    logging:
+      driver: syslog
+      options:
+        syslog-address: udp://127.0.0.1:514
+        syslog-format: "rfc3164"
+        syslog-facility: local0
+        tag: ${PROJECT}
 
