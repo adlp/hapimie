@@ -268,9 +268,9 @@ class Zapiz:
                 #Gestion des droits....
                 if not('groups' in varSession.keys() and self.api_routes[verb][uri]['acl'] in varSession['groups']):
                     if self.api_routes[verb][uri]['html']:
-                        return HTMLResponse(content= f"<h1>403 - Page non trouvée {self.api_routes[verb][uri]['acl']}</h1>", status_code=404)
+                        return HTMLResponse(content= f"<html><head><meta http-equiv='refresh' content='5;URL=/'></head><body><h1>403 - Accés limité <a href='/'>HomePage</a></h1></body></html>", status_code=403)
                     else:
-                        return JSONResponse( status_code=403, content={"detail": "Ressource introuvable"})
+                        return JSONResponse( status_code=403, content={"detail": "Ressource limite"})
 
             ### On doit trouver la fonction, etc...
             # Appel dynamique a la fonction cible, avec tout les parametres
