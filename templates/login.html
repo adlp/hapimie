@@ -3,19 +3,28 @@
 {% block title %}Connexion{% endblock %}
 
 {% block content %}
-<h2>🔐 Connexion</h2>
-<form method="post" action="/login">
-  <label for="username">Nom d'utilisateur :</label><br>
-  <input type="text" id="username" name="username" required><br><br>
+<div class="login-box">
+    <h2>Connexion</h2>
+    <!-- Formulaire classique -->
+    <form method="post" action="/login">
+        <input type="hidden" id="mth" name="mth" value="pwd" />
+        <label for="username">Nom d'utilisateur</label>
+        <input type="text" id="username" name="username" required>
 
-  <label for="password">Mot de passe :</label><br>
-  <input type="password" id="password" name="password" required><br><br>
+        <label for="password">Mot de passe</label>
+        <input type="password" id="password" name="password" required>
 
-  <button type="submit">Se connecter</button>
-</form>
+        <button type="submit">Login</button>
+    </form>
 
-{% if error %}
-  <p style="color:red;">{{ error }}</p>
-{% endif %}
+    <!-- Bouton Authentik affiché seulement si la variable est définie -->
+    {% if auth %}
+    <div class="authentik">
+        <form method="post" action="/login">
+            <input type="hidden" id="mth" name="mth" value="{{auth}}" />
+            <button type="submit">Login via {{auth}}</button>
+        </form>
+    </div>
+    {% endif %}
+</div>
 {% endblock %}
-

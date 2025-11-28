@@ -105,9 +105,32 @@ class Zapiz:
     def setup_auth_routes(self):
         @self.app.get("/login")
         async def login(request: Request):
-            redirect_uri = request.url_for('auth_callback')
-            return await self.auth.authentik.authorize_redirect(request, redirect_uri)
+            templateid="base"
+            nextstep={}
+            nextstep['request']=request
+            nextstep['auth']="authentik.santeol.com"
+            print('🦆🦆')
+            print( request.query_params.get('mth'))
+            #if request.query_params.get('mth')==nextstep['auth']:
+            #    redirect_uri = request.url_for('auth_callback')
+            #    return await self.auth.authentik.authorize_redirect(request, redirect_uri)
+            return self.templates[templateid].TemplateResponse("login.html",nextstep)
         
+        @self.app.post("/login")
+        async def loginAuthLocal(request: Request):
+            print('🦆')
+            form=await request.form()
+            mth=form.get('mth')
+            if mth == "authentik.santeol.com":
+                redirect_uri = request.url_for('auth_callback')
+                return await self.auth.authentik.authorize_redirect(request, redirect_uri)
+            elif mth == 'pwd':
+                login=form.get("username")
+                passw=form.get("password")
+                return RedirectResponse(url="/",status_code=303)
+            else:
+                return RedirectResponse(url="/login",status_code=303)
+                # 303 permet de forcer le navigateur a faire un get sur le page suivante
         @self.app.get("/login/callback")
         async def auth_callback(request: Request):
             print("Dans le auth_call back !")
