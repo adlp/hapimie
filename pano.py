@@ -4,6 +4,7 @@ import asyncio
 from time import time #, sleep
 from datetime import datetime
 import inspect
+import json
 
 class Pano:
     def __init__(self, host="127.0.0.1", port=5038, login="login", password="password"):
@@ -484,11 +485,17 @@ class Pano:
         for key,value in {"Channel":Channel,"Exten":Exten,"Context":Context,"Priority":Priority,"Application":Application,"Data":Data,"Timeout":Timeout,
                 "CallerID":CallerID,"Variable":Variable,"Account":Account,"EarlyMedia":EarlyMedia,"Async":Async,"Codecs":Codecs,"ChannelId":ChannelId,"OtherChannelId":OtherChannelId}.items():
             if value is not None:
-                #hero[key]=value
-                hero[key]=",".join(f"{k}={v}" for k, v in value.items())
+                print(value)
+                if key == "Variable":
+                    val=json.loads(value)
+                    hero[key]=",".join(f"{k}={v}" for k, v in val.items())
+                else:
+                    hero[key]=value
+
         print('⚡️')
         print(hero)
         resultat=await self.action(hero)
+        #resultat={}
         print(resultat)
         print('⚡️⚡️')
         return(resultat)
