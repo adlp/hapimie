@@ -103,6 +103,7 @@ app = Zapiz(
     oidc_client_secret=cfg['OIDC_CLIENT_SECRET'],
     oidc_issuer=cfg['OIDC_ISSUER'],
     oidc_root=cfg['OIDC_ROOT'],
+    sentry=cfg['SENTRY_DSN'],
     secret_key=cfg['SECRET_KEY'],
     startup=asti.startup
     )

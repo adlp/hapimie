@@ -22,27 +22,25 @@
   </style>
 </head>
 <body>
-{% if sentry_dsn %}
+{% if sentry %}
 <script>
-  (function() {
-    // Sentry loader sans CDN externe
-    window.Sentry = {
-      init: function(config) {
-        this.config = config;
-        this.captureException = function(e) {
-          console.error("Sentry capture:", e);
-          // Tu peux ici envoyer l'erreur à ton backend ou à Sentry via fetch
-        };
-      }
-    };
+  const sentryDsn = {{ sentry }};
 
+  if (sentryDsn && sentryDsn.trim() !== "") {
     Sentry.init({
-      dsn: "{{ sentry_dsn }}",
+      dsn: sentryDsn,
+      integrations: [
+        new Sentry.BrowserTracing(),
+      ],
       environment: "production",
       release: "hapimie@...",
-      tags: { module: "frontend" }
+      tags: { module: "frontend" },
+      tracesSampleRate: 1.0,
     });
-  })();
+    console.log("Sentry initialisé avec DSN:", sentryDsn);
+  } else {
+    console.log("Sentry non initialisé (pas de DSN)");
+  }
 </script>
 {% endif %}
   <div class="header">

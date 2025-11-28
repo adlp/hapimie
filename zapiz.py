@@ -32,7 +32,8 @@ class Zapiz:
             oidc_client_id=None, oidc_client_secret=None, oidc_issuer=None, oidc_scopes="openid profile email groups", oidc_root=None,
             secret_key="your-secret-key",
             title=None, description=None, version= None, docs_url=None, redoc_url=None, openapi_url=None,
-            template_dir="templates",static_dir="static",token_url="token",root=os.path.abspath(os.getcwd())+"/"):
+            template_dir="templates",static_dir="static",token_url="token",root=os.path.abspath(os.getcwd())+"/",
+            sentry=None):
         self.host = host
         self.port = port
         self.app = FastAPI(title=title,description=description,version=version,docs_url=docs_url,redoc_url=redoc_url,openapi_url=openapi_url)
@@ -44,6 +45,7 @@ class Zapiz:
         self.api_routes= { 'GET':{},'POST':{}}
         self.tokens = {}  # token: {owner, legend, expires}
         self.oauth2_scheme = OAuth2PasswordBearer(tokenUrl=token_url)
+        self.sentry=sentry
 
         if oidc_client_id:
             self.auth = OAuth()
@@ -292,12 +294,16 @@ class Zapiz:
                 nextstep['name']=varSession.get("name",None)
                 #print('👽️ resul ta da')
                 #print(result.keys())
+                if self.sentry:
+                    print(f'🚒 {self.sentry}')
+                    nextstep['sentry']=self.sentry
+                    print(nextstep)
                 templateid='base'
                 if 'templateid' in result.keys():
                     templateid=result['templateid']
                 if  self.api_routes[verb][uri]['html']:
                     return self.templates[templateid].TemplateResponse(result['template'],nextstep)
-                    return HTMLResponse(self.templates[templateid].TemplateResponse(result['template'],nextstep))
+                    #return HTMLResponse(self.templates[templateid].TemplateResponse(result['template'],nextstep))
                 else:
                     return JSONResponse(self.templates[templateid].TemplateResponse(result['template'],nextstep))
             elif 'redirect' in result.keys():
