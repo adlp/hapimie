@@ -484,7 +484,8 @@ class Pano:
         for key,value in {"Channel":Channel,"Exten":Exten,"Context":Context,"Priority":Priority,"Application":Application,"Data":Data,"Timeout":Timeout,
                 "CallerID":CallerID,"Variable":Variable,"Account":Account,"EarlyMedia":EarlyMedia,"Async":Async,"Codecs":Codecs,"ChannelId":ChannelId,"OtherChannelId":OtherChannelId}.items():
             if value is not None:
-                hero[key]=value
+                #hero[key]=value
+                hero[key]=",".join(f"{k}={v}" for k, v in value.items())
         print('⚡️')
         print(hero)
         resultat=await self.action(hero)
