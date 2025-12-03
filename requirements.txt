@@ -7,3 +7,5 @@ itsdangerous
 jinja2
 python-multipart
 sentry_sdk
+python-jose
+bcrypt

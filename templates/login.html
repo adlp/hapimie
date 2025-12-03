@@ -1,30 +1,21 @@
 {% extends "base.html" %}
-
-{% block title %}Connexion{% endblock %}
-
+{% block title %}Login{% endblock %}
 {% block content %}
-<div class="login-box">
-    <h2>Connexion</h2>
-    <!-- Formulaire classique -->
-    <form method="post" action="/login">
-        <input type="hidden" id="mth" name="mth" value="pwd" />
-        <label for="username">Nom d'utilisateur</label>
-        <input type="text" id="username" name="username" required>
+<h2>Connexion locale</h2>
+<form method="post" action="/token">
+    <label for="username">Nom d'utilisateur</label>
+    <input type="text" id="username" name="username" required>
+    <label for="password">Mot de passe</label>
+    <input type="password" id="password" name="password" required>
+    <button type="submit">Login</button>
+</form>
 
-        <label for="password">Mot de passe</label>
-        <input type="password" id="password" name="password" required>
+<hr>
 
-        <button type="submit">Login</button>
-    </form>
-
-    <!-- Bouton Authentik affiché seulement si la variable est définie -->
-    {% if auth %}
-    <div class="authentik">
-        <form method="post" action="/login">
-            <input type="hidden" id="mth" name="mth" value="{{auth}}" />
-            <button type="submit">Login via {{auth}}</button>
-        </form>
-    </div>
-    {% endif %}
-</div>
+<h2>Connexion via Authentik</h2>
+{% if authentik_url %}
+<button type="button" onclick="window.location.href='{{ authentik_url }}?client_id={{ oidc_client_id }}&redirect_uri={{ oidc_redirect_uri }}&response_type=code&scope=profile%20email%20openid'">
+    Login via Authentik
+</button>
+{% endif %}
 {% endblock %}
