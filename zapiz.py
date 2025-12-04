@@ -309,37 +309,31 @@ class Zapiz:
         return response
 
     async def auth_secret(self,varSession,params={}):
+        nextstep={}
+        request=varSession['request']
+        nextstep['request']=request
         # 1. Récupérer le token d'accès depuis le cookie
         access_token = request.cookies.get("access_token")
         print('🤑')
         print(access_token)
-        if not access_token:
-            # Pas de token → redirection vers /refresh avec next
-            print('💀 Token perdu')
-            current_url = str(request.url)
-            return RedirectResponse(url=f"/refresh?next={current_url}", status_code=303)
-    
-        # 2. Vérifier le token
-        try:
-            payload = jwt.decode(access_token, self.secret_key, algorithms=[self.algo])
-            print('💀 Token alive')
-            print(payload)
-        except JWTError:
-            # Token invalide ou expiré → redirection vers /refresh avec next
-            print('💀 Token expiré')
-            current_url = str(request.url)
-            return RedirectResponse(url=f"/refresh?next={current_url}", status_code=303)
+        current_url = str(request.url)
+        payload={}
+        if access_token:
+            # 2. Vérifier le token
+            try:
+                payload = jwt.decode(access_token, self.secret_key, algorithms=[self.algo])
+                print('💀 Token alive')
+                print(payload)
+            except JWTError:
+                # Token invalide ou expiré → redirection vers /refresh avec next
+                print('💀 Token expiré')
     
         # 3. Extraire les infos de l'utilisateur depuis le token interne
-        user = {
-            "sub": payload.get("sub"),
-            "name": payload.get("name"),
-            "email": payload.get("email"),
-            "groups": payload.get("groups"),
-        }
+        user={}
+        for i in ['sub','name','email','groups']:
+            user[i]=payload.get(i)
+
         templateid="base"
-        nextstep={}
-        nextstep['request']=request
         #payload = verify_token(token, "access")
         nextstep['user'] = payload.get("sub")
         nextstep['method'] = payload.get("auth_method")
@@ -485,10 +479,8 @@ class Zapiz:
                 return JSONResponse( status_code=404, content={"detail": "Ressource introuvable"})
                 #return HTMLResponse(content= "<h1>404 - Page non trouvée</h1>", status_code=404)
 
-            #varSession = request.session.get("user")
-            varSession=None
-            if not varSession:
-                varSession={}
+            varSession={}
+            varSession['request']=request
             # 🔍 Détection de la méthode HTTP
             #verb = request.method
             #uri  = request.url.path
