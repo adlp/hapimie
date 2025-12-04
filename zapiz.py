@@ -427,31 +427,23 @@ class Zapiz:
         if ret['access_token']:
             # 2. Vérifier le token
             try:
-                print('💬 access token !')
-                print(ret['access_token'])
                 payload = jwt.decode(ret['access_token'], self.secret_key, algorithms=[self.algo])
                 ret['payload']=payload
             except JWTError:
-                print('💬 no payload access token !')
                 ret['access_token']=None
 
         if not ret['access_token']:
-            print('💬 no access token')
             # 1. Récupérer le refresh token depuis le cookie
             if not ret['refresh_token']:
-                print('💬 no refresh token !!!')
                 return(None)
             # 2. Décoder le refresh token interne
             try:
-                print('💬 refresh token')
                 payload = jwt.decode(ret['refresh_token'], self.secret_key, algorithms=[self.algo])
             except JWTError:
-                print('💬 not payload refresh token :::')
                 return(None)
         
             # 3. Vérifier qu’il s’agit bien d’un refresh token
             if payload.get("type") != "refresh":
-                print('💬 not payload TYPE refresh token :::')
                 return(None)
         
             ret['payload']=payload
