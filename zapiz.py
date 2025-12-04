@@ -116,52 +116,38 @@ class Zapiz:
 
         return({'template':'login.html', 'varSession':varSession,'template_data':template_data})
 
-    async def auth_local_login(request: Request):
-        form = await request.form()
+    async def auth_local_login(self,varSession,params={}):
+        form = varSession['form']
         username = form.get("username")
         password = form.get("password")
     
         # Lire l'utilisateur depuis le CSV
-        user_data = get_user_from_csv(self.user_csvfile, username)
+        user_data = self.get_user_from_csv(self.user_csvfile, username)
         if not user_data:
-            raise HTTPException(status_code=401, detail="Invalid credentials")
+            return({'redirect':'/login'})
+            #raise HTTPException(status_code=401, detail="Invalid credentials")
     
         # Vérifier le mot de passe en clair contre le hash
         if not bcrypt.checkpw(password.encode("utf-8"), user_data["hashed_pw"].encode("utf-8")):
-            raise HTTPException(status_code=401, detail="Invalid credentials")
+            return({'redirect':'/login'})
+            #raise HTTPException(status_code=401, detail="Invalid credentials")
     
         # Créer les tokens internes
-        access_token = self.auth_create_token(
-            {
-                "sub": user_data["username"],
-                "auth_method": "local",
-                "name": user_data["name"],
-                "email": user_data["email"],
-                "groups": user_data["groups"],
-            },
-            timedelta(minutes=self.token_access_timeout_min),
-            "access",
-        )
-        refresh_token = self.auth_create_token(
-            {
-                "sub": user_data["username"],
-                "auth_method": "local",
-                "name": user_data["name"],
-                "email": user_data["email"],
-                "groups": user_data["groups"],
-            },
-            timedelta(days=self.token_refresh_timeout_days),
-            "refresh",
-        )
-    
-        # Réponse avec cookies
-        response = RedirectResponse(url="/secret", status_code=303)
-        response.set_cookie("access_token", access_token, httponly=True)
-        response.set_cookie("refresh_token", refresh_token, httponly=True)
-        return response
+        internal_claims = {}
+        internal_claims['auth_method']='local'
+        for i in  ['name','username','groups','email']:
+            internal_claims[i]=user_data.get(i)
+        print('🏘️')
+        print(internal_claims)
+        print(user_data)
+
+        # Générer tokens internes
+        access_token = self.auth_create_token(internal_claims, timedelta(minutes=self.token_access_timeout_min), "access")
+        refresh_token = self.auth_create_token(internal_claims, timedelta(days=self.token_refresh_timeout_days), "refresh")
+        return({'redirect':'/','set_cookie': {'access_token':access_token,'refresh_token':refresh_token}})
 
     # Fonction utilitaire pour lire le CSV et retourner les infos utilisateur
-    def get_user_from_csv(csvfile, username):
+    def get_user_from_csv(self,csvfile, username):
         # python3 -c "import bcrypt; print(bcrypt.hashpw(b'monmotdepasse', bcrypt.gensalt()).decode())"
         with open(csvfile, newline="", encoding="utf-8") as f:
             reader = csv.reader(f, delimiter=":")
@@ -248,43 +234,36 @@ class Zapiz:
             return({'redirect':'/login'})
             #return RedirectResponse(url="/login", status_code=303)
 
-        print('payload')
-        print(payload)
-        user = payload.get("sub")
-        name = payload.get("name")
-        email = payload.get("email")
-        groups = payload.get("groups")
+        internal_claims={}
+        for i in  ['sub','name','given_name','preferred_username','nickname','groups','email']:
+            internal_claims[i]=payload.get(i)
+            if i=='preferred_username':
+                internal_claims['username']=payload.get(i)
 
-        if not (name and email and groups):
-            print('🚒')
+        if not (internal_claims['name'] and internal_claims['email'] and internal_claims['groups']):
+            print('🚒🚒🚒🚒🚒🚒🚒🚒🚒🚒🚒')
             async with httpx.AsyncClient() as client:
                 userinfo_resp = await client.get(
                     self.oidc_usin_url,
                     headers={"Authorization": f"Bearer {access_token_oidc}"}
                     )
             userinfo = userinfo_resp.json()
-            name = name or userinfo.get("name")
-            email = email or userinfo.get("email")
-            groups = groups or userinfo.get("groups")
-            print('userinfo')
-            print(userinfo)
+            for i in  ['sub','name','given_name','preferred_username','nickname','groups','email']:
+                internal_claims[i]=internal_claims[i] or userinfo.get(i)
+                if i=='preferred_username':
+                    internal_claims['username']=internal_claims['username'] or userinfo.get(i)
 
-        internal_claims = {
-            "sub": user,
-            "auth_method": "oidc",
-            "name": name,
-            "email": email,
-            "groups": groups,
-            }
-    
+        internal_claims['auth_method']='oidc'
+
+        print('🏚️')
+        print(internal_claims)
         # Générer tokens internes
         access_token = self.auth_create_token(internal_claims, timedelta(minutes=self.token_access_timeout_min), "access")
         refresh_token = self.auth_create_token(internal_claims, timedelta(days=self.token_refresh_timeout_days), "refresh")
         return({'redirect':'/','set_cookie': {'access_token':access_token,'refresh_token':refresh_token}})
-        response = RedirectResponse(url="/secret", status_code=303)
-        response.set_cookie("access_token", access_token, httponly=True)
-        response.set_cookie("refresh_token", refresh_token, httponly=True)
-        return response
+
+    async def auth_logout(self,varSession,params={}):
+        return({'redirect':'/','del_cookie': ['access_token','refresh_token']})
 
     async def auth_refresh(request: Request, next=None):
         # 1. Récupérer le refresh token depuis le cookie
@@ -378,18 +357,12 @@ class Zapiz:
             "user": user
         })
 
-    async def auth_logout(request: Request):
-        response = RedirectResponse(url="/login", status_code=303)
-        response.delete_cookie("access_token")
-        response.delete_cookie("refresh_token")
-        return response
-
     def setup_auth_routes(self):
         self.api_add("/login",self.auth_login_page,html=True)
-        self.api_add("/token",self.auth_local_login,verb="POST",html=True)
+        self.api_add("/login/localback",self.auth_local_login,verb="POST",html=True)
         self.api_add('/login/callback',self.auth_oidc_callback,html=True)
-        self.api_add('/refresh',self.auth_refresh,html=True)
-        #self.api_add('/secret',self.auth_secret,html=True)
+        #self.api_add('/refresh',self.auth_refresh,html=True)
+        self.api_add('/login/whoami',self.auth_secret,html=True)
         self.api_add('/logout',self.auth_logout,html=True)
         
 
@@ -450,8 +423,8 @@ class Zapiz:
         expire = datetime.utcnow() + expires_delta
         to_encode.update({"exp": expire, "type": token_type})
         return jwt.encode(to_encode, self.secret_key, algorithm=self.algo)
-    def api_tokens_status(self,request:Request):
 
+    def api_tokens_status(self,request:Request):
         ret={}
         # 1. Récupérer le token d'accès depuis le cookie
         ret['access_token']  = request.cookies.get("access_token")
@@ -459,23 +432,31 @@ class Zapiz:
         if ret['access_token']:
             # 2. Vérifier le token
             try:
+                print('💬 access token !')
                 print(ret['access_token'])
                 payload = jwt.decode(ret['access_token'], self.secret_key, algorithms=[self.algo])
                 ret['payload']=payload
             except JWTError:
+                print('💬 no payload access token !')
                 ret['access_token']=None
+
         if not ret['access_token']:
+            print('💬 no access token')
             # 1. Récupérer le refresh token depuis le cookie
             if not ret['refresh_token']:
+                print('💬 no refresh token !!!')
                 return(None)
             # 2. Décoder le refresh token interne
             try:
+                print('💬 refresh token')
                 payload = jwt.decode(ret['refresh_token'], self.secret_key, algorithms=[self.algo])
             except JWTError:
+                print('💬 not payload refresh token :::')
                 return(None)
         
             # 3. Vérifier qu’il s’agit bien d’un refresh token
             if payload.get("type") != "refresh":
+                print('💬 not payload TYPE refresh token :::')
                 return(None)
         
             ret['payload']=payload
@@ -528,8 +509,11 @@ class Zapiz:
                 for i in dict(request.query_params):
                     varSession['form'][i]=request.query_params.get(i)
 
+            print('🗯️')
             curUser=self.api_tokens_status(request)
             if curUser:
+                print('🗯️🗯️')
+                print(curUser)
                 for i in ['sub','name','email','groups']:
                     varSession[i]=curUser['datas'].get(i)
 
@@ -569,16 +553,33 @@ class Zapiz:
                 if 'templateid' in result.keys():
                     templateid=result['templateid']
                 if  self.api_routes[verb][uri]['html']:
-                    return self.templates[templateid].TemplateResponse(result['template'],nextstep)
+                    response=self.templates[templateid].TemplateResponse(result['template'],nextstep)
+                    if 'set_cookie' in result.keys():
+                        for i in result['set_cookie']:
+                            response.set_cookie(i, result['set_cookie'][i], httponly=True)
+                    if 'del_cookie' in result.keys():
+                        for i in result['del_cookie']:
+                            response.delete_cookie(i)
+                    return response
                     #return HTMLResponse(self.templates[templateid].TemplateResponse(result['template'],nextstep))
                 else:
-                    return JSONResponse(self.templates[templateid].TemplateResponse(result['template'],nextstep))
+                    response=JSONResponse(self.templates[templateid].TemplateResponse(result['template'],nextstep))
+                    if 'set_cookie' in result.keys():
+                        for i in result['set_cookie']:
+                            response.set_cookie(i, result['set_cookie'][i], httponly=True)
+                    if 'del_cookie' in result.keys():
+                        for i in result['del_cookie']:
+                            response.delete_cookie(i)
+                    return  response
             elif 'redirect' in result.keys():
                 #return await self.auth.authentik.authorize_redirect(request, result['redirect'])
                 response = RedirectResponse(url=result.get('redirect',"/"),status_code=result.get('status_code',303))
                 if 'set_cookie' in result.keys():
                     for i in result['set_cookie']:
                         response.set_cookie(i, result['set_cookie'][i], httponly=True)
+                if 'del_cookie' in result.keys():
+                    for i in result['del_cookie']:
+                        response.delete_cookie(i)
                 return response
                 #return RedirectResponse(url=result['redirect'],status_code=303)
             else:
