@@ -343,6 +343,7 @@ class Zapiz:
         nextstep['claims']=payload
         user = payload.get("sub")
         method = payload.get("auth_method")
+        return({'template':'secret.html','varSession': varSession,'template_data':nextstep})
         return self.templates[templateid].TemplateResponse("secret.html",nextstep)
     
         # 4. Retourner la page secrète avec les infos
@@ -544,40 +545,25 @@ class Zapiz:
                 templateid='base'
                 if 'templateid' in result.keys():
                     templateid=result['templateid']
+
                 if  self.api_routes[verb][uri]['html']:
                     response=self.templates[templateid].TemplateResponse(result['template'],nextstep)
-                    if 'set_cookie' in result.keys():
-                        for i in result['set_cookie']:
-                            response.set_cookie(i, result['set_cookie'][i], httponly=True)
-                    if 'del_cookie' in result.keys():
-                        for i in result['del_cookie']:
-                            response.delete_cookie(i)
-                    return response
-                    #return HTMLResponse(self.templates[templateid].TemplateResponse(result['template'],nextstep))
                 else:
                     response=JSONResponse(self.templates[templateid].TemplateResponse(result['template'],nextstep))
-                    if 'set_cookie' in result.keys():
-                        for i in result['set_cookie']:
-                            response.set_cookie(i, result['set_cookie'][i], httponly=True)
-                    if 'del_cookie' in result.keys():
-                        for i in result['del_cookie']:
-                            response.delete_cookie(i)
-                    return  response
             elif 'redirect' in result.keys():
-                #return await self.auth.authentik.authorize_redirect(request, result['redirect'])
                 response = RedirectResponse(url=result.get('redirect',"/"),status_code=result.get('status_code',303))
-                if 'set_cookie' in result.keys():
-                    for i in result['set_cookie']:
-                        response.set_cookie(i, result['set_cookie'][i], httponly=True)
-                if 'del_cookie' in result.keys():
-                    for i in result['del_cookie']:
-                        response.delete_cookie(i)
-                return response
-                #return RedirectResponse(url=result['redirect'],status_code=303)
             else:
-                #print('👽️ result')
-                #print(result)
                 return(result)
+
+            if 'set_cookie' in result.keys():
+                for i in result['set_cookie']:
+                    response.set_cookie(i, result['set_cookie'][i], httponly=True)
+            if 'del_cookie' in result.keys():
+                for i in result['del_cookie']:
+                    response.delete_cookie(i)
+            return response
+
+
         return wrapper
 
     def declare_path(app, method: str, path: str, *, summary: str = None, include_in_schema: bool = True):
