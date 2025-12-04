@@ -449,14 +449,16 @@ class Zapiz:
             ret['payload']=payload
             # 4. Reprendre les claims stockés (sub, name, email, groups…)
             internal_claims={}
-            for i in ['sub','auth_method','name','email','groups']:
+            for i in payload.keys():
+                if i == "type":
+                    continue
                 internal_claims[i]=payload.get(i)
         
             # 5. Générer un nouveau access token
             ret['access_token'] = self.auth_create_token(internal_claims, timedelta(minutes=self.token_access_timeout_min), "access")
         
             # 6. (Optionnel) régénérer un nouveau refresh token si tu veux prolonger la durée
-            ret['refresh_token'] = self.auth_create_token(internal_claims, timedelta(days=self.token_refresh_timeout_days), "refresh")
+            ###ret['refresh_token'] = self.auth_create_token(internal_claims, timedelta(days=self.token_refresh_timeout_days), "refresh")
 
             #response.set_cookie("access_token", new_access_token, httponly=True)
             #response.set_cookie("refresh_token", new_refresh_token, httponly=True)
