@@ -46,7 +46,6 @@ class Zapiz:
         self.templates={}
         self.templates['base']=Jinja2Templates(directory=template_dir)
         self.app.mount("/"+static_dir, StaticFiles(directory=root+static_dir), name="static")
-        self.web_routes: Dict[str, str] = {}
         self.api_routes= { 'GET':{},'POST':{}}
         self.tokens = {}  # token: {owner, legend, expires}
         self.oauth2_scheme = OAuth2PasswordBearer(tokenUrl=token_url)
@@ -67,23 +66,8 @@ class Zapiz:
         self.sentry=sentry
 
         self.setup_auth_routes()
-        #if oidc_client_id:
-        #    self.auth = OAuth()
-        #    self.auth.register(
-        #        name="authentik",
-        #        client_id=oidc_client_id,
-        #        client_secret=oidc_client_secret,
-        #        server_metadata_url=oidc_issuer,
-        #        client_kwargs={'scope':oidc_scopes}
-        #        )
-        #    self.setup_auth_routes()
-        #    self.oidc_root=oidc_root
-        #else:
-        #    self.auth=None
-        ##self.app.include_router(self.auth.router,prefix="/auth")
 
         self._setup_docs()
-        self._setup_token_routes()
 
         if startup:
             self.app.on_event("startup")(startup)
@@ -123,408 +107,296 @@ class Zapiz:
                 staticid=static_dir.split('/')[-1]
         self.app.mount("/"+staticid, StaticFiles(directory=root+static_dir), name=staticid)
 
-    def setup_auth_routes(self):
-        def create_token(data: dict, expires_delta: timedelta, token_type: str):
-            to_encode = data.copy()
-            expire = datetime.utcnow() + expires_delta
-            to_encode.update({"exp": expire, "type": token_type})
-            return jwt.encode(to_encode, self.secret_key, algorithm=self.algo)
+    #async def auth_login_page(request: Request):
+    async def auth_login_page(self,varSession,params={}):
+        template_data={}
+        template_data['authentik_url']=self.oidc_auth_url
+        template_data['oidc_client_id']=self.oidc_client_id
+        template_data['oidc_redirect_uri']=self.oidc_redi_url
+
+        return({'template':'login.html', 'varSession':varSession,'template_data':template_data})
+
+    async def auth_local_login(request: Request):
+        form = await request.form()
+        username = form.get("username")
+        password = form.get("password")
+    
+        # Lire l'utilisateur depuis le CSV
+        user_data = get_user_from_csv(self.user_csvfile, username)
+        if not user_data:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+        # Vérifier le mot de passe en clair contre le hash
+        if not bcrypt.checkpw(password.encode("utf-8"), user_data["hashed_pw"].encode("utf-8")):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+        # Créer les tokens internes
+        access_token = self.auth_create_token(
+            {
+                "sub": user_data["username"],
+                "auth_method": "local",
+                "name": user_data["name"],
+                "email": user_data["email"],
+                "groups": user_data["groups"],
+            },
+            timedelta(minutes=self.token_access_timeout_min),
+            "access",
+        )
+        refresh_token = self.auth_create_token(
+            {
+                "sub": user_data["username"],
+                "auth_method": "local",
+                "name": user_data["name"],
+                "email": user_data["email"],
+                "groups": user_data["groups"],
+            },
+            timedelta(days=self.token_refresh_timeout_days),
+            "refresh",
+        )
+    
+        # Réponse avec cookies
+        response = RedirectResponse(url="/secret", status_code=303)
+        response.set_cookie("access_token", access_token, httponly=True)
+        response.set_cookie("refresh_token", refresh_token, httponly=True)
+        return response
+
+    # Fonction utilitaire pour lire le CSV et retourner les infos utilisateur
+    def get_user_from_csv(csvfile, username):
+        # python3 -c "import bcrypt; print(bcrypt.hashpw(b'monmotdepasse', bcrypt.gensalt()).decode())"
+        with open(csvfile, newline="", encoding="utf-8") as f:
+            reader = csv.reader(f, delimiter=":")
+            for row in reader:
+                if len(row) < 5:
+                    continue
+                user, hashed_pw, name, email, groups = row
+                if user == username:
+                    return {
+                        "username": user,
+                        "hashed_pw": hashed_pw,
+                        "name": name,
+                        "email": email,
+                        "groups": groups.split(","),
+                    }
+        return None
+    
+    def decode_payload(token: str):
+        import base64
+        import json
+
+        # Découper le token en 3 parties
+        parts = token.split(".")
+        if len(parts) != 3:
+            raise ValueError("Token invalide")
         
-        def verify_token(token: str, token_type: str):
-            payload = jwt.decode(token, self.secret_key, algorithms=[self.algo])
-            if payload.get("type") != token_type:
-                raise JWTError("Invalid token type")
-            return payload
-        
-        @self.app.get("/login", response_class=HTMLResponse)
-        async def login_page(request: Request):
-            templateid="base"
-            nextstep={}
-            nextstep['request']=request
-            nextstep['authentik_url']=self.oidc_auth_url
-            nextstep['oidc_client_id']=self.oidc_client_id
-            nextstep['oidc_redirect_uri']=self.oidc_redi_url
+        # Décoder la partie payload (2ème partie)
+        payload_b64 = parts[1] + "=="  # ajouter padding si nécessaire
+        payload_bytes = base64.urlsafe_b64decode(payload_b64)
+        payload = json.loads(payload_bytes)
+        return payload
 
-            return self.templates[templateid].TemplateResponse("login.html",nextstep)
-            #return templates.TemplateResponse("login.html", {"request": request, "authentik_url": self.oidc_auth_url})
-        
-        @self.app.post("/token")
-        #async def local_login(username: str = Form(...), password: str = Form(...)):
-        async def local_login(request: Request):
-            form = await request.form()
-            username = form.get("username")
-            password = form.get("password")
-        
-            # Lire l'utilisateur depuis le CSV
-            user_data = get_user_from_csv(self.user_csvfile, username)
-            if not user_data:
-                raise HTTPException(status_code=401, detail="Invalid credentials")
-        
-            # Vérifier le mot de passe en clair contre le hash
-            if not bcrypt.checkpw(password.encode("utf-8"), user_data["hashed_pw"].encode("utf-8")):
-                raise HTTPException(status_code=401, detail="Invalid credentials")
-        
-            # Créer les tokens internes
-            access_token = create_token(
-                {
-                    "sub": user_data["username"],
-                    "auth_method": "local",
-                    "name": user_data["name"],
-                    "email": user_data["email"],
-                    "groups": user_data["groups"],
-                },
-                timedelta(minutes=self.token_access_timeout_min),
-                "access",
-            )
-            refresh_token = create_token(
-                {
-                    "sub": user_data["username"],
-                    "auth_method": "local",
-                    "name": user_data["name"],
-                    "email": user_data["email"],
-                    "groups": user_data["groups"],
-                },
-                timedelta(days=self.token_refresh_timeout_days),
-                "refresh",
-            )
-        
-            # Réponse avec cookies
-            response = RedirectResponse(url="/secret", status_code=303)
-            response.set_cookie("access_token", access_token, httponly=True)
-            response.set_cookie("refresh_token", refresh_token, httponly=True)
-            return response
-
-
-        # Fonction utilitaire pour lire le CSV et retourner les infos utilisateur
-        def get_user_from_csv(csvfile, username):
-            # python3 -c "import bcrypt; print(bcrypt.hashpw(b'monmotdepasse', bcrypt.gensalt()).decode())"
-            with open(csvfile, newline="", encoding="utf-8") as f:
-                reader = csv.reader(f, delimiter=":")
-                for row in reader:
-                    if len(row) < 5:
-                        continue
-                    user, hashed_pw, name, email, groups = row
-                    if user == username:
-                        return {
-                            "username": user,
-                            "hashed_pw": hashed_pw,
-                            "name": name,
-                            "email": email,
-                            "groups": groups.split(","),
-                        }
-            return None
-        
-
-
-
-
-
-
-        async def local_login2(request: Request):
-            USERS = {"alice": "password123", "bob": "secret"}
-            form=await request.form()
-            username=form.get('username')
-            password=form.get('password')
-            if USERS.get(username) != password:
-                raise HTTPException(status_code=401, detail="Invalid credentials")
-            access_token = create_token({"sub": username, "auth_method": "local"}, timedelta(minutes=self.token_access_timeout_min), "access")
-            refresh_token = create_token({"sub": username, "auth_method": "local"}, timedelta(days=self.token_refresh_timeout_days), "refresh")
-            response = RedirectResponse(url="/secret", status_code=303)
-            response.set_cookie("access_token", access_token, httponly=True)
-            response.set_cookie("refresh_token", refresh_token, httponly=True)
-            return response
-
-        def decode_payload(token: str):
-            import base64
-            import json
-
-            # Découper le token en 3 parties
-            parts = token.split(".")
-            if len(parts) != 3:
-                raise ValueError("Token invalide")
-            
-            # Décoder la partie payload (2ème partie)
-            payload_b64 = parts[1] + "=="  # ajouter padding si nécessaire
-            payload_bytes = base64.urlsafe_b64decode(payload_b64)
-            payload = json.loads(payload_bytes)
-            return payload
-        
-        @self.app.get("/login/callback")
-        async def oidc_callback(request: Request, code: str):
-            # Échange du code contre un token Authentik
-            data={
-                    "grant_type": "authorization_code",
-                    "code": code,
-                    "redirect_uri": self.oidc_redi_url,
-                    "client_id": self.oidc_client_id,
-                    "client_secret": self.oidc_client_secret,
-                }
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(self.oidc_toke_url, data=data)
-            print(f'🔫 {self.oidc_toke_url}')
-            print('data')
-            print(data)
-            print('resp')
-            print(resp)
-            tokens = resp.json()
-            id_token = tokens.get("id_token")
-            access_token_oidc = tokens.get("access_token")
-
-            print(tokens)
-            print(self.oidc_issuer)
-            print(decode_payload(tokens.get('access_token')))
-            print(decode_payload(tokens.get('id_token')))
-            print(f'🔫 {self.oidc_toke_url}')
-
-            if not id_token:
-                return RedirectResponse(url="/login", status_code=303)
-
-            # Récupérer les clés publiques JWKS
-            async with httpx.AsyncClient() as client:
-                jwks_resp = await client.get(self.oidc_jwks_url)
-            jwks = jwks_resp.json()
-        
-            # Décoder l'id_token (⚠️ en prod, vérifier signature avec clé publique Authentik)
-            #payload = jwt.decode(id_token, options={"verify_signature": False})
-            try:
-                payload = jwt.decode(
-                    id_token,
-                    jwks,
-                    algorithms=["RS256"],  # ou l’algo utilisé par Authentik
-                    audience=self.oidc_client_id,
-                    issuer=self.oidc_issuer
-                    )
-            except JWTError:
-                return RedirectResponse(url="/login", status_code=303)
-
-            print('payload')
-            print(payload)
-            user = payload.get("sub")
-            name = payload.get("name")
-            email = payload.get("email")
-            groups = payload.get("groups")
-
-            if not (name and email and groups):
-                print('🚒')
-                async with httpx.AsyncClient() as client:
-                    userinfo_resp = await client.get(
-                        self.oidc_usin_url,
-                        headers={"Authorization": f"Bearer {access_token_oidc}"}
-                        )
-                userinfo = userinfo_resp.json()
-                name = name or userinfo.get("name")
-                email = email or userinfo.get("email")
-                groups = groups or userinfo.get("groups")
-                print('userinfo')
-                print(userinfo)
-
-            internal_claims = {
-                "sub": user,
-                "auth_method": "oidc",
-                "name": name,
-                "email": email,
-                "groups": groups,
-                }
-        
-            # Générer tokens internes
-            access_token = create_token(internal_claims, timedelta(minutes=self.token_access_timeout_min), "access")
-            refresh_token = create_token(internal_claims, timedelta(days=self.token_refresh_timeout_days), "refresh")
-            response = RedirectResponse(url="/secret", status_code=303)
-            response.set_cookie("access_token", access_token, httponly=True)
-            response.set_cookie("refresh_token", refresh_token, httponly=True)
-            return response
-
-        @self.app.get("/refresh")
-        async def refresh(request: Request, next=None):
-            # 1. Récupérer le refresh token depuis le cookie
-            refresh_token = request.cookies.get("refresh_token")
-            if not refresh_token:
-                return JSONResponse({"error": "No refresh token"}, status_code=401)
-        
-            # 2. Décoder le refresh token interne
-            try:
-                payload = jwt.decode(refresh_token, self.secret_key, algorithms=[self.algo])
-            except JWTError:
-                return JSONResponse({"error": "Invalid refresh token"}, status_code=401)
-            print('💋')
-            print(payload)
-        
-            # 3. Vérifier qu’il s’agit bien d’un refresh token
-            if payload.get("type") != "refresh":
-                return JSONResponse({"error": "Wrong token type"}, status_code=401)
-        
-            # 4. Reprendre les claims stockés (sub, name, email, groups…)
-            internal_claims = {
-                "sub": payload.get("sub"),
-                "auth_method": payload.get("auth_method"),
-                "name": payload.get("name"),
-                "email": payload.get("email"),
-                "groups": payload.get("groups"), }
-        
-            # 5. Générer un nouveau access token
-            new_access_token = create_token(internal_claims, timedelta(minutes=self.token_access_timeout_min), "access")
-        
-            # 6. (Optionnel) régénérer un nouveau refresh token si tu veux prolonger la durée
-            new_refresh_token = create_token(internal_claims, timedelta(days=self.token_refresh_timeout_days), "refresh")
-
-        
-            # 7. Poser les cookies et renvoyer
-            print('💋💋')
-            #response = JSONResponse({"status": "ok"})
-            if next:
-                referer=next
-            response = RedirectResponse(url=referer, status_code=303)
-            response.set_cookie("access_token", new_access_token, httponly=True)
-            response.set_cookie("refresh_token", new_refresh_token, httponly=True)
-            referer = request.headers.get("referer", "/")
-            return response
-
-
-        @self.app.get("/secret")
-        async def secret(request: Request):
-            # 1. Récupérer le token d'accès depuis le cookie
-            access_token = request.cookies.get("access_token")
-            print('🤑')
-            print(access_token)
-            if not access_token:
-                # Pas de token → redirection vers /refresh avec next
-                print('💀 Token perdu')
-                current_url = str(request.url)
-                return RedirectResponse(url=f"/refresh?next={current_url}", status_code=303)
-        
-            # 2. Vérifier le token
-            try:
-                payload = jwt.decode(access_token, self.secret_key, algorithms=[self.algo])
-                print('💀 Token alive')
-                print(payload)
-            except JWTError:
-                # Token invalide ou expiré → redirection vers /refresh avec next
-                print('💀 Token expiré')
-                current_url = str(request.url)
-                return RedirectResponse(url=f"/refresh?next={current_url}", status_code=303)
-        
-            # 3. Extraire les infos de l'utilisateur depuis le token interne
-            user = {
-                "sub": payload.get("sub"),
-                "name": payload.get("name"),
-                "email": payload.get("email"),
-                "groups": payload.get("groups"),
+    #async def auth_oidc_callback(self,request: Request, code: str):
+    async def auth_oidc_callback(self,varSession,params={}):
+        code=None
+        if varSession.get('form'):
+            code=varSession['form'].get('code')
+        print(f'🤑 code : {code}')
+        # Échange du code contre un token Authentik
+        data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": self.oidc_redi_url,
+                "client_id": self.oidc_client_id,
+                "client_secret": self.oidc_client_secret,
             }
-            templateid="base"
-            nextstep={}
-            nextstep['request']=request
-            #payload = verify_token(token, "access")
-            nextstep['user'] = payload.get("sub")
-            nextstep['method'] = payload.get("auth_method")
-            nextstep['email'] = payload.get("email")
-            nextstep['name'] = payload.get("name")
-            nextstep['groups'] = payload.get("groups",[])
-            nextstep['claims']=payload
-            user = payload.get("sub")
-            method = payload.get("auth_method")
-            return self.templates[templateid].TemplateResponse("secret.html",nextstep)
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(self.oidc_toke_url, data=data)
+        print(f'🔫 {self.oidc_toke_url}')
+        print('data')
+        print(data)
+        print('resp')
+        print(resp)
+        tokens = resp.json()
+        id_token = tokens.get("id_token")
+        access_token_oidc = tokens.get("access_token")
+
+        print(tokens)
+        print(self.oidc_issuer)
+        #print(decode_payload(tokens.get('access_token')))
+        #print(decode_payload(tokens.get('id_token')))
+        print(f'🔫 {self.oidc_toke_url}')
+
+        if not id_token:
+            return({'redirect':'/login'})
+            #return RedirectResponse(url="/login", status_code=303)
+
+        # Récupérer les clés publiques JWKS
+        async with httpx.AsyncClient() as client:
+            jwks_resp = await client.get(self.oidc_jwks_url)
+        jwks = jwks_resp.json()
+    
+        # Décoder l'id_token (⚠️ en prod, vérifier signature avec clé publique Authentik)
+        #payload = jwt.decode(id_token, options={"verify_signature": False})
+        try:
+            payload = jwt.decode(
+                id_token,
+                jwks,
+                algorithms=["RS256"],  # ou l’algo utilisé par Authentik
+                audience=self.oidc_client_id,
+                issuer=self.oidc_issuer
+                )
+        except JWTError:
+            return({'redirect':'/login'})
+            #return RedirectResponse(url="/login", status_code=303)
+
+        print('payload')
+        print(payload)
+        user = payload.get("sub")
+        name = payload.get("name")
+        email = payload.get("email")
+        groups = payload.get("groups")
+
+        if not (name and email and groups):
+            print('🚒')
+            async with httpx.AsyncClient() as client:
+                userinfo_resp = await client.get(
+                    self.oidc_usin_url,
+                    headers={"Authorization": f"Bearer {access_token_oidc}"}
+                    )
+            userinfo = userinfo_resp.json()
+            name = name or userinfo.get("name")
+            email = email or userinfo.get("email")
+            groups = groups or userinfo.get("groups")
+            print('userinfo')
+            print(userinfo)
+
+        internal_claims = {
+            "sub": user,
+            "auth_method": "oidc",
+            "name": name,
+            "email": email,
+            "groups": groups,
+            }
+    
+        # Générer tokens internes
+        access_token = self.auth_create_token(internal_claims, timedelta(minutes=self.token_access_timeout_min), "access")
+        refresh_token = self.auth_create_token(internal_claims, timedelta(days=self.token_refresh_timeout_days), "refresh")
+        return({'redirect':'/','set_cookie': {'access_token':access_token,'refresh_token':refresh_token}})
+        response = RedirectResponse(url="/secret", status_code=303)
+        response.set_cookie("access_token", access_token, httponly=True)
+        response.set_cookie("refresh_token", refresh_token, httponly=True)
+        return response
+
+    async def auth_refresh(request: Request, next=None):
+        # 1. Récupérer le refresh token depuis le cookie
+        refresh_token = request.cookies.get("refresh_token")
+        if not refresh_token:
+            return JSONResponse({"error": "No refresh token"}, status_code=401)
+    
+        # 2. Décoder le refresh token interne
+        try:
+            payload = jwt.decode(refresh_token, self.secret_key, algorithms=[self.algo])
+        except JWTError:
+            return JSONResponse({"error": "Invalid refresh token"}, status_code=401)
+        print('💋')
+        print(payload)
+    
+        # 3. Vérifier qu’il s’agit bien d’un refresh token
+        if payload.get("type") != "refresh":
+            return JSONResponse({"error": "Wrong token type"}, status_code=401)
+    
+        # 4. Reprendre les claims stockés (sub, name, email, groups…)
+        internal_claims = {
+            "sub": payload.get("sub"),
+            "auth_method": payload.get("auth_method"),
+            "name": payload.get("name"),
+            "email": payload.get("email"),
+            "groups": payload.get("groups"), }
+    
+        # 5. Générer un nouveau access token
+        new_access_token = self.auth_create_token(internal_claims, timedelta(minutes=self.token_access_timeout_min), "access")
+    
+        # 6. (Optionnel) régénérer un nouveau refresh token si tu veux prolonger la durée
+        new_refresh_token = self.auth_create_token(internal_claims, timedelta(days=self.token_refresh_timeout_days), "refresh")
+
+        # 7. Poser les cookies et renvoyer
+        print('💋💋')
+        #response = JSONResponse({"status": "ok"})
+        if next:
+            referer=next
+        response = RedirectResponse(url=referer, status_code=303)
+        response.set_cookie("access_token", new_access_token, httponly=True)
+        response.set_cookie("refresh_token", new_refresh_token, httponly=True)
+        referer = request.headers.get("referer", "/")
+        return response
+
+    async def auth_secret(self,varSession,params={}):
+        # 1. Récupérer le token d'accès depuis le cookie
+        access_token = request.cookies.get("access_token")
+        print('🤑')
+        print(access_token)
+        if not access_token:
+            # Pas de token → redirection vers /refresh avec next
+            print('💀 Token perdu')
+            current_url = str(request.url)
+            return RedirectResponse(url=f"/refresh?next={current_url}", status_code=303)
+    
+        # 2. Vérifier le token
+        try:
+            payload = jwt.decode(access_token, self.secret_key, algorithms=[self.algo])
+            print('💀 Token alive')
+            print(payload)
+        except JWTError:
+            # Token invalide ou expiré → redirection vers /refresh avec next
+            print('💀 Token expiré')
+            current_url = str(request.url)
+            return RedirectResponse(url=f"/refresh?next={current_url}", status_code=303)
+    
+        # 3. Extraire les infos de l'utilisateur depuis le token interne
+        user = {
+            "sub": payload.get("sub"),
+            "name": payload.get("name"),
+            "email": payload.get("email"),
+            "groups": payload.get("groups"),
+        }
+        templateid="base"
+        nextstep={}
+        nextstep['request']=request
+        #payload = verify_token(token, "access")
+        nextstep['user'] = payload.get("sub")
+        nextstep['method'] = payload.get("auth_method")
+        nextstep['email'] = payload.get("email")
+        nextstep['name'] = payload.get("name")
+        nextstep['groups'] = payload.get("groups",[])
+        nextstep['claims']=payload
+        user = payload.get("sub")
+        method = payload.get("auth_method")
+        return self.templates[templateid].TemplateResponse("secret.html",nextstep)
+    
+        # 4. Retourner la page secrète avec les infos
+        return JSONResponse({
+            "message": "Bienvenue sur la page secrète 🎉",
+            "user": user
+        })
+
+    async def auth_logout(request: Request):
+        response = RedirectResponse(url="/login", status_code=303)
+        response.delete_cookie("access_token")
+        response.delete_cookie("refresh_token")
+        return response
+
+    def setup_auth_routes(self):
+        self.api_add("/login",self.auth_login_page,html=True)
+        self.api_add("/token",self.auth_local_login,verb="POST",html=True)
+        self.api_add('/login/callback',self.auth_oidc_callback,html=True)
+        self.api_add('/refresh',self.auth_refresh,html=True)
+        #self.api_add('/secret',self.auth_secret,html=True)
+        self.api_add('/logout',self.auth_logout,html=True)
         
-            # 4. Retourner la page secrète avec les infos
-            return JSONResponse({
-                "message": "Bienvenue sur la page secrète 🎉",
-                "user": user
-            })
-
-        #@self.app.get("/secret", response_class=HTMLResponse)
-        async def secret_page1(request: Request):
-            token = request.cookies.get("access_token")
-            if not token:
-                return RedirectResponse(url="/login", status_code=303)
-            try:
-                templateid="base"
-                nextstep={}
-                nextstep['request']=request
-                payload = verify_token(token, "access")
-                nextstep['user'] = payload.get("sub")
-                nextstep['method'] = payload.get("auth_method")
-                nextstep['email'] = payload.get("email")
-                nextstep['name'] = payload.get("name")
-                nextstep['groups'] = payload.get("groups",[])
-                nextstep['claims']=payload
-                user = payload.get("sub")
-                method = payload.get("auth_method")
-                return self.templates[templateid].TemplateResponse("secret.html",nextstep)
-               # return templates.TemplateResponse("secret.html", {"request": request, "user": user, "method": method})
-            except JWTError:
-                # Récupérer l'URL courante
-                current_url = str(request.url)
-                # Rediriger vers /refresh avec ?next=<url courante>
-                return RedirectResponse(url=f"/refresh?next={current_url}", status_code=303)
-
-        
-        @self.app.get("/logout")
-        async def logout(request: Request):
-            response = RedirectResponse(url="/login", status_code=303)
-            response.delete_cookie("access_token")
-            response.delete_cookie("refresh_token")
-            return response
-
-        @self.app.get("/whoami")
-        async def whoami(request: Request):
-            user = request.session.get("user")
-            if not user:
-                raise HTTPException(status_code=401, detail="Non authentifié")
-            return user
 
     def _setup_docs(self):
         @self.app.get("/docs", include_in_schema=False)
         async def custom_docs():
             return get_swagger_ui_html(openapi_url=self.app.openapi_url, title="Zapiz API Docs")
-
-    def _setup_token_routes(self):
-        @self.app.post("/token")
-        async def create_token(request: Request):
-            form = await request.form()
-            user = form.get("username")
-            legend = form.get("legend", "")
-            duration = int(form.get("duration", 3600))
-            token = f"tok_{user}_{datetime.utcnow().timestamp()}"
-            self.tokens[token] = {
-                "owner": user,
-                "legend": legend,
-                "expires": datetime.utcnow() + timedelta(seconds=duration),
-                "last_active": datetime.utcnow()
-            }
-            return {"access_token": token, "token_type": "bearer"}
-
-        @self.app.get("/tokens")
-        async def list_tokens():
-            return self.tokens
-
-        @self.app.post("/tokens/deactivate")
-        async def deactivate_token(token: str):
-            if token in self.tokens:
-                del self.tokens[token]
-                return {"status": "deleted"}
-            raise HTTPException(status_code=404, detail="Token not found")
-
-    def _verify_token(self, token: str):
-        data = self.tokens.get(token)
-        if not data:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        now = datetime.utcnow()
-        if now - data["last_active"] > timedelta(minutes=20):
-            del self.tokens[token]
-            raise HTTPException(status_code=401, detail="Session expired")
-        if now > data["expires"]:
-            del self.tokens[token]
-            raise HTTPException(status_code=401, detail="Token expired")
-        data["last_active"] = now
-        return data["owner"]
-
-    def webs(self, uri: str, template_path: str):
-        self.web_routes[uri] = template_path
-
-        @self.app.get(uri, response_class=HTMLResponse)
-        async def render_page(request: Request, token: str = Depends(self.oauth2_scheme)):
-            print('Render_page')
-            user = self._verify_token(token)
-            return self.templates.TemplateResponse(template_path, {"request": request, "user": user})
 
     def api_add(self, uri: str, func: Callable,html:bool=True,verb:str="GET",acl=None):
         """ 
@@ -572,7 +444,60 @@ class Zapiz:
                 if self.api_routes[verb][uri]:
                     ret[verb].append(uri)
         return(ret)
+
+    def auth_create_token(self,data: dict, expires_delta: timedelta, token_type: str):
+        to_encode = data.copy()
+        expire = datetime.utcnow() + expires_delta
+        to_encode.update({"exp": expire, "type": token_type})
+        return jwt.encode(to_encode, self.secret_key, algorithm=self.algo)
+    def api_tokens_status(self,request:Request):
+
+        ret={}
+        # 1. Récupérer le token d'accès depuis le cookie
+        ret['access_token']  = request.cookies.get("access_token")
+        ret['refresh_token'] = request.cookies.get("refresh_token")
+        if ret['access_token']:
+            # 2. Vérifier le token
+            try:
+                print(ret['access_token'])
+                payload = jwt.decode(ret['access_token'], self.secret_key, algorithms=[self.algo])
+                ret['payload']=payload
+            except JWTError:
+                ret['access_token']=None
+        if not ret['access_token']:
+            # 1. Récupérer le refresh token depuis le cookie
+            if not ret['refresh_token']:
+                return(None)
+            # 2. Décoder le refresh token interne
+            try:
+                payload = jwt.decode(ret['refresh_token'], self.secret_key, algorithms=[self.algo])
+            except JWTError:
+                return(None)
         
+            # 3. Vérifier qu’il s’agit bien d’un refresh token
+            if payload.get("type") != "refresh":
+                return(None)
+        
+            ret['payload']=payload
+            # 4. Reprendre les claims stockés (sub, name, email, groups…)
+            internal_claims={}
+            for i in ['sub','auth_method','name','email','groups']:
+                internal_claims[i]=payload.get(i)
+        
+            # 5. Générer un nouveau access token
+            ret['access_token'] = self.auth_create_token(internal_claims, timedelta(minutes=self.token_access_timeout_min), "access")
+        
+            # 6. (Optionnel) régénérer un nouveau refresh token si tu veux prolonger la durée
+            ret['refresh_token'] = self.auth_create_token(internal_claims, timedelta(days=self.token_refresh_timeout_days), "refresh")
+
+            #response.set_cookie("access_token", new_access_token, httponly=True)
+            #response.set_cookie("refresh_token", new_refresh_token, httponly=True)
+        ret['datas']={}
+        for i in ['sub','name','email','groups']:
+            ret['datas'][i]=payload.get(i)
+    
+        return(ret)
+
     def _secure_api_tab(self, verb,uri):
         async def wrapper(request: Request):
             if not self.api_routes[verb].get(uri,None) or not self.api_routes[verb][uri]['func']:
@@ -587,7 +512,8 @@ class Zapiz:
             #verb = request.method
             #uri  = request.url.path
             print(f"✅ wrapper {verb} {uri} réussie : {varSession}")
-            #print(f"💡 request : {request.path_params}")
+           # print(f"💡 request : {request.path_params}")
+            print(f"💡 request : {request}")
             varSession['verb']=verb
             if verb=="POST":
                 content_type = request.headers.get("content-type", "")
@@ -597,6 +523,15 @@ class Zapiz:
                     varSession['form'] = dict(await request.form())
                 else:
                     varSession['form'] = {}
+            elif verb=="GET":
+                varSession['form']={}
+                for i in dict(request.query_params):
+                    varSession['form'][i]=request.query_params.get(i)
+
+            curUser=self.api_tokens_status(request)
+            if curUser:
+                for i in ['sub','name','email','groups']:
+                    varSession[i]=curUser['datas'].get(i)
 
             if self.api_routes[verb][uri]['acl']:
                 #Gestion des droits....
@@ -640,51 +575,12 @@ class Zapiz:
                     return JSONResponse(self.templates[templateid].TemplateResponse(result['template'],nextstep))
             elif 'redirect' in result.keys():
                 #return await self.auth.authentik.authorize_redirect(request, result['redirect'])
-                return RedirectResponse(url=result['redirect'],status_code=303)
-            else:
-                #print('👽️ result')
-                #print(result)
-                return(result)
-        return wrapper
-
-    def _secure_api(self, func: Callable):
-        #async def wrapper(request: Request,nom:str=None,token: str = Depends(self.oauth2_scheme)):
-        async def wrapper(request: Request):
-            varSession = request.session.get("user")
-            if not varSession:
-                varSession={}
-            # 🔍 Détection de la méthode HTTP
-            verb = request.method
-            uri  = request.url.path
-            print(f"✅ wrapper {verb} {uri} réussie : {varSession}")
-            #print(f"💡 request : {request.path_params}")
-            varSession['verb']=verb
-            if verb=="POST":
-                varSession['form']=dict(await request.form())
-
-            # Appel dynamique a la fonction cible, avec tout les parametres
-            if inspect.iscoroutinefunction(func):
-                result=await func(varSession=varSession,params=request.path_params)
-            else:
-                result=func(varSession=varSession,params=request.path_params)
-            if not isinstance(result,dict):
-                1
-            elif 'template' in result.keys():
-                nextstep=result
-                nextstep['request']=request
-                if 'template_data' in result.keys():
-                    for k in result['template_data'].keys():
-                        nextstep[k]=result['template_data'][k]
-                #nextstep['refresh_interval']=1000
-                nextstep['name']=varSession.get("name",None)
-                #print('👽️ resul ta da')
-                #print(result.keys())
-                templateid='base'
-                if 'templateid' in result.keys():
-                    templateid=result['templateid']
-                return self.templates[templateid].TemplateResponse(result['template'],nextstep)
-            elif 'redirect' in result.keys():
-                return await self.auth.authentik.authorize_redirect(request, result['redirect'])
+                response = RedirectResponse(url=result.get('redirect',"/"),status_code=result.get('status_code',303))
+                if 'set_cookie' in result.keys():
+                    for i in result['set_cookie']:
+                        response.set_cookie(i, result['set_cookie'][i], httponly=True)
+                return response
+                #return RedirectResponse(url=result['redirect'],status_code=303)
             else:
                 #print('👽️ result')
                 #print(result)
