@@ -550,6 +550,10 @@ class Zapiz:
             if 'set_cookie' in result.keys():
                 for i in result['set_cookie']:
                     response.set_cookie(i, result['set_cookie'][i], httponly=True)
+            elif curUser:
+                for i in ['refresh_token','access_token']:
+                    if curUser.get(i):
+                        response.set_cookie(i, curUser.get(i), httponly=True)
             if 'del_cookie' in result.keys():
                 for i in result['del_cookie']:
                     response.delete_cookie(i)
