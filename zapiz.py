@@ -521,7 +521,7 @@ class Zapiz:
                 result=      self.api_routes[verb][uri]['func'](varSession=varSession,params=request.path_params)
 
             if not isinstance(result,dict):
-                1
+                result={}
             elif 'template' in result.keys():
                 nextstep=result
                 nextstep['request']=request
