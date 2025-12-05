@@ -358,7 +358,9 @@ app.api_add("/endpoints/{nom}/{groupe}",form_endpoints,acl=cfg['HAPACL_FULL']),
 app.api_add("/queue",form_queues,acl=cfg['HAPACL_Status']),
 app.api_add("/dbview",form_dbview,acl=cfg['HAPACL_FULL']),
 #    app.api_add("/dial", dial_page),
-app.api_add("/favicon.ico",funNull),
+# app.api_add("/favicon.ico",funNull),
+app.api_add('/favicon.ico',funNull,file="static/favicon.ico")
+
 
 app.api_add(f"{cfg['API_PATH']}/help",api_help,html=False)
 app.api_add(cfg['API_PATH']+"/help/{command}",api_help,html=False)

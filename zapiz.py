@@ -12,7 +12,7 @@
 #from fastapi.responses import RedirectResponse
 
 from fastapi import FastAPI, Request, Depends, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse,JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse,JSONResponse,FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.openapi.docs import get_swagger_ui_html
@@ -359,20 +359,22 @@ class Zapiz:
         #self.api_add('/refresh',self.auth_refresh,html=True)
         self.api_add('/login/whoami',self.auth_secret,html=True)
         self.api_add('/logout',self.auth_logout,html=True)
-        
 
     def _setup_docs(self):
         @self.app.get("/docs", include_in_schema=False)
         async def custom_docs():
             return get_swagger_ui_html(openapi_url=self.app.openapi_url, title="Zapiz API Docs")
 
-    def api_add(self, uri: str, func: Callable,html:bool=True,verb:str="GET",acl=None):
+    def api_add(self, uri: str, func: Callable,html:bool=True,verb:str="GET",acl=None,file=None):
         """ 
         Format des routes
         uri func html verb  await (et on rajoutede suite s'il faut un await)
         Le add remplacera comme un sauvage le comportement de mv :)
         """
-        fncAsync=inspect.iscoroutinefunction(func)
+
+        fncAsync=None
+        if not file:
+            fncAsync=inspect.iscoroutinefunction(func)
 
         uris=[uri]
         if uri[-1] != "/":
@@ -390,6 +392,8 @@ class Zapiz:
             self.api_routes[verb][u]['html']=html
             self.api_routes[verb][u]['await']=fncAsync
             self.api_routes[verb][u]['acl']=acl
+            self.api_routes[verb][u]['file']=file
+
 
     def api_del(self, uri: str, verb:str="GET"):
         """ 
@@ -473,6 +477,8 @@ class Zapiz:
             if not self.api_routes[verb].get(uri,None) or not self.api_routes[verb][uri]['func']:
                 return JSONResponse( status_code=404, content={"detail": "Ressource introuvable"})
                 #return HTMLResponse(content= "<h1>404 - Page non trouvée</h1>", status_code=404)
+            else:
+                print(self.api_routes[verb][uri])
 
             varSession={}
             varSession['request']=request
@@ -496,7 +502,7 @@ class Zapiz:
                 for i in dict(request.query_params):
                     varSession['form'][i]=request.query_params.get(i)
 
-            print('🗯️')
+            print(f'🗯️{uri}')
             curUser=self.api_tokens_status(request)
             if curUser:
                 print('🗯️🗯️')
@@ -515,7 +521,9 @@ class Zapiz:
             ### On doit trouver la fonction, etc...
             # Appel dynamique a la fonction cible, avec tout les parametres
             #if inspect.iscoroutinefunction(func):
-            if self.api_routes[verb][uri]['await']:
+            if self.api_routes[verb][uri]['file']:
+                result={'fileResponse': self.api_routes[verb][uri]['file'] }
+            elif self.api_routes[verb][uri]['await']:
                 result=await self.api_routes[verb][uri]['func'](varSession=varSession,params=request.path_params)
             else:
                 result=      self.api_routes[verb][uri]['func'](varSession=varSession,params=request.path_params)
@@ -546,6 +554,9 @@ class Zapiz:
                     response=JSONResponse(self.templates[templateid].TemplateResponse(result['template'],nextstep))
             elif 'redirect' in result.keys():
                 response = RedirectResponse(url=result.get('redirect',"/"),status_code=result.get('status_code',303))
+            elif 'fileResponse' in result.keys():
+                print(f'🖼️  {result["fileResponse"]}')
+                response = FileResponse(result['fileResponse'])
             else:
                 return(result)
 
