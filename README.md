@@ -5,14 +5,22 @@ Happy l'api amie de l'AMI
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)
 ![Panoramisk](https://img.shields.io/badge/Panoramisk-async%20AMI%20client-green.svg)
 
-# Le projetHapimie
+# Le projet Hapimie
 
 Une API open source accompagnée d'une interface web, conçue pour acceder simplement a l'AMI d'asterisk
+
+L'interface web est aisement surchargeable, integre une auth local mais aussi openid, afin de presenter a votre facon votre acces a l'api
+
+Afin de decharger l'AMI d'asterisk, le projet ouvre une connexion permanante (evite ainsi les login/logout permanant) a l'AMI, puis pour certaines fonctionnalités gere un cache
+
+
+## TODO
+Creation de token pour bot d'API
 
 ## Fonctionnalités
 
 - API RESTful pour acceder a l'Asterisk Management Interface (AMI)
-- Interface web en HTML/CSS/JS
+- Interface web en HTML(djinja)/CSS/JS
 
 ## ⚖️ Licence
 
@@ -34,16 +42,18 @@ Dans un repertoire de votre choix deployez le git
 git clone https://github.com/adlp/hapimie.git
 cd hapimie
 ```
-### Requierements:
+
+### Configuration
+  - copiez le dot.env.sample en .env, et adaptez le a votre environement
+  - copiez le hapimie-sample.cfg, dans le repertoire que pointeras DOHAPIMIETC et adaptez le a vos besoins
 
 
-  - python3
-  - python3-fastapi
-  - python3-panoramisk
-  - python3-passlib
-  - python3-jwt
-  - python3-distro
+### Lancement
+  - Ce projet s'appuie sur une image officielle de python, donc oui il met des données dans le /var/lib/docker, mais pour le moment pas jugées trop volumineuse.
+  - Il suffit juste de faire un ```docker-compose up -d```. Le contenaire cherchera les outils dont il a besoin (pip install via requierement.txt) puis se lancera
 
+
+## Doc a ameliorer
 ### Configuration
   * Le fichier de configuration trouvera naturellement sa place là /usr/local/etc/hapimie.cfg, mais il peut etre specifié lors de l'appel d'hapimie, avec le parametre --cfgfile
 ```ini /usr/local/etc/hapimie.cfg
@@ -74,40 +84,8 @@ SENTRY_DSN=sentry-url'n-token
 
   * Lors du premier usage il convient de creer un compte et un mot de passe, le fichier des utilisateurs est users.csv dans le meme repertoire que hapimie
 
-### Gestion des users
-Pour lancer l'application, il faut que le fichier users.csv soit cree dans son path.
-Pout utiliser l'application il est preferable d'avoir un user, voici comment le creer
-
-```bash
-> ./manage_users 
-usage: manage_users [-h] [--email EMAIL] [--gecos GECOS] file login
-manage_users: error: the following arguments are required: file, login
-> ./manage_users --email phonemaster@example.com --gecos "Phone Admin" users.csv admin
-➕ Création de l'utilisateur 'admin'
-Mot de passe : 
-Confirmer : 
-✅ Fichier mis à jour : users.csv
-```
-
-### Lancement
-
-Dans l'exemple ci dessous, hapimie est lancé avec un fichier de configuration dans le repertoire courant.
-```bash
-./hapimie --cfgfile hapimie.cfg 
-Sentry Enabling
-INFO:     Started server process [483524]
-INFO:     Waiting for application startup.
-Connexion a l'AMI
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8888 (Press CTRL+C to quit)
-```
-
-
-
 ### 🧪 Tests
 J'voudrais bien... mais bon...
-
-=> Ajout d'un support sentry
 
 ### 👤 Auteur
 Développé par Antoine DELAPORTE
