@@ -1,6 +1,4 @@
 # Ignore conf file
-hapimie.cfg
-users.csv
 
 # Ignore vi
 *.swp
