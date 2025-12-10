@@ -158,7 +158,7 @@ async def api_help_exec(varSession,params={}):
     else:
         response = {
             "Response": "Failure",
-            "Message": f"Non loggué ou pas d'action",
+            "Message": f"Non logué ou pas d'action",
             "Data": data,
             'Retour': {}
             }
