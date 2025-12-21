@@ -23,8 +23,9 @@
 </head>
 <body>
 {% if sentry %}
+<script src="https://browser.sentry-cdn.com/7.114.0/bundle.tracing.min.js" crossorigin="anonymous"></script>
 <script>
-  const sentryDsn = {{ sentry }};
+  const sentryDsn = "{{ sentry }}";
 
   if (sentryDsn && sentryDsn.trim() !== "") {
     Sentry.init({
