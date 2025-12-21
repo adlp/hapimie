@@ -363,22 +363,22 @@ app.api_add("/dbview",form_dbview,acl=cfg['HAPACL_FULL']),
 app.api_add('/favicon.ico',funNull,file="static/favicon.ico")
 
 
-app.api_add(f"{cfg['API_PATH']}/help",api_help,html=False)
-app.api_add(cfg['API_PATH']+"/help/{command}",api_help,html=False)
-app.api_add(f"{cfg['API_PATH']}/status",api_status,html=False,acl=cfg['HAPACL_Status'])
-app.api_add(f"{cfg['API_PATH']}/queue",api_queues,html=False,acl=cfg['HAPACL_Status'])
-app.api_add(f"{cfg['API_PATH']}/endpoints",api_endpoints,html=False,acl=cfg['HAPACL_Status'])
-app.api_add(f"{cfg['API_PATH']}/endpointPerGrp",api_endpointPerGrp,html=False,acl=cfg['HAPACL_Status'])
-app.api_add(f"{cfg['API_PATH']}/dbGet",api_dbGet,html=False,acl=cfg['HAPACL_FULL'])
-app.api_add(f"{cfg['API_PATH']}/dbGet/"+"{path:path}",api_dbGet,html=False,acl=cfg['HAPACL_FULL'])
-#    app.api_add(f"{cfg['API_PATH']}/myphones",get_myphones,html=False)
-#    app.api_add(f"{cfg['API_PATH']}/trackeur",showtrack,html=False)
+app.api_add(f"{cfg['API_PATH']}/help",api_help,daType='json')
+app.api_add(cfg['API_PATH']+"/help/{command}",api_help,daType='json')
+app.api_add(f"{cfg['API_PATH']}/status",api_status,daType='json',acl=cfg['HAPACL_Status'])
+app.api_add(f"{cfg['API_PATH']}/queue",api_queues,daType='json',acl=cfg['HAPACL_Status'])
+app.api_add(f"{cfg['API_PATH']}/endpoints",api_endpoints,daType='json',acl=cfg['HAPACL_Status'])
+app.api_add(f"{cfg['API_PATH']}/endpointPerGrp",api_endpointPerGrp,daType='json',acl=cfg['HAPACL_Status'])
+app.api_add(f"{cfg['API_PATH']}/dbGet",api_dbGet,daType='json',acl=cfg['HAPACL_FULL'])
+app.api_add(f"{cfg['API_PATH']}/dbGet/"+"{path:path}",api_dbGet,daType='json',acl=cfg['HAPACL_FULL'])
+#    app.api_add(f"{cfg['API_PATH']}/myphones",get_myphones,daType='json')
+#    app.api_add(f"{cfg['API_PATH']}/trackeur",showtrack,daType='json')
 
-app.api_add(cfg['API_PATH']+"/help-exec",api_help_exec,html=False,verb="POST",acl=cfg['HAPACL_FULL']) #POST
-app.api_add(cfg['API_PATH']+"/HangUp",api_hangup,html=False,verb="POST",acl=cfg['HAPACL_FULL']) # POST
-#    app.api_add(cfg['API_PATH']+"/dbPut",db_put,html=False,verb="POST") # POST
-#    app.api_add(cfg['API_PATH']+"/dbDel",db_del,html=False,verb="POST") # POST
-#    app.api_add(f"{cfg['API_PATH']}/dial",dial_api,html=False,verb="POST") # POST
+app.api_add(cfg['API_PATH']+"/help-exec",api_help_exec,daType='json',verb="POST",acl=cfg['HAPACL_FULL']) #POST
+app.api_add(cfg['API_PATH']+"/HangUp",api_hangup,daType='json',verb="POST",acl=cfg['HAPACL_FULL']) # POST
+#    app.api_add(cfg['API_PATH']+"/dbPut",db_put,daType='json',verb="POST") # POST
+#    app.api_add(cfg['API_PATH']+"/dbDel",db_del,daType='json',verb="POST") # POST
+#    app.api_add(f"{cfg['API_PATH']}/dial",dial_api,daType='json',verb="POST") # POST
 
 
 

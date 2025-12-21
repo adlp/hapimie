@@ -30,6 +30,8 @@ from jose import jwt, JWTError
 import csv
 import bcrypt
 
+import markdown
+
 
 class Zapiz:
     def __init__(self, host: str="127.0.0.1", port: int=8080,
@@ -353,19 +355,19 @@ class Zapiz:
         })
 
     def setup_auth_routes(self):
-        self.api_add("/login",self.auth_login_page,html=True)
-        self.api_add("/login/localback",self.auth_local_login,verb="POST",html=True)
-        self.api_add('/login/callback',self.auth_oidc_callback,html=True)
-        #self.api_add('/refresh',self.auth_refresh,html=True)
-        self.api_add('/login/whoami',self.auth_secret,html=True)
-        self.api_add('/logout',self.auth_logout,html=True)
+        self.api_add("/login",self.auth_login_page,daType="html")
+        self.api_add("/login/localback",self.auth_local_login,verb="POST",daType="html")
+        self.api_add('/login/callback',self.auth_oidc_callback,daType="html")
+        #self.api_add('/refresh',self.auth_refresh,daType="html")
+        self.api_add('/login/whoami',self.auth_secret,daType="html")
+        self.api_add('/logout',self.auth_logout,daType="html")
 
     def _setup_docs(self):
         @self.app.get("/docs", include_in_schema=False)
         async def custom_docs():
             return get_swagger_ui_html(openapi_url=self.app.openapi_url, title="Zapiz API Docs")
 
-    def api_add(self, uri: str, func: Callable,html:bool=True,verb:str="GET",acl=None,file=None):
+    def api_add(self, uri: str, func: Callable,daType:str="html",verb:str="GET",acl=None,file=None):
         """ 
         Format des routes
         uri func html verb  await (et on rajoutede suite s'il faut un await)
@@ -389,7 +391,7 @@ class Zapiz:
                     self.app.post(u)(self._secure_api_tab(verb,u))
             self.api_routes[verb][u]={}
             self.api_routes[verb][u]['func']=func
-            self.api_routes[verb][u]['html']=html
+            self.api_routes[verb][u]['daType']=daType
             self.api_routes[verb][u]['await']=fncAsync
             self.api_routes[verb][u]['acl']=acl
             self.api_routes[verb][u]['file']=file
@@ -513,7 +515,7 @@ class Zapiz:
             if self.api_routes[verb][uri]['acl']:
                 #Gestion des droits....
                 if not('groups' in varSession.keys() and self.api_routes[verb][uri]['acl'] in varSession['groups']):
-                    if self.api_routes[verb][uri]['html']:
+                    if self.api_routes[verb][uri]['daType']=='html' or self.api_routes[verb][uri]['daType']=='md':
                         return HTMLResponse(content= f"<html><head><meta http-equiv='refresh' content='5;URL=/'></head><body><h1>403 - Accés limité <a href='/'>HomePage</a></h1></body></html>", status_code=403)
                     else:
                         return JSONResponse( status_code=403, content={"detail": "Ressource limite"})
@@ -548,10 +550,17 @@ class Zapiz:
                 if 'templateid' in result.keys():
                     templateid=result['templateid']
 
-                if  self.api_routes[verb][uri]['html']:
+                if  self.api_routes[verb][uri]['daType']=='html':
                     response=self.templates[templateid].TemplateResponse(result['template'],nextstep)
-                else:
+                elif  self.api_routes[verb][uri]['daType']=='json':
                     response=JSONResponse(self.templates[templateid].TemplateResponse(result['template'],nextstep))
+                elif  self.api_routes[verb][uri]['daType']=='md':
+                    # Cote temporaire, il va manquer les base truc de faire jolie.... (reellement il faudrait mettre ce html en cache puis lire le cache par la procedure noramal)
+                    html_content = markdown.markdown(md_text)
+                    response= f"<html><body>{html_content}</body></html>"
+
+                else:
+                    response='Uncreadible'
             elif 'redirect' in result.keys():
                 response = RedirectResponse(url=result.get('redirect',"/"),status_code=result.get('status_code',303))
             elif 'fileResponse' in result.keys():
