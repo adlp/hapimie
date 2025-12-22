@@ -25,7 +25,7 @@
 
       Object.entries(caller).forEach(([sourceId, targetIds]) => {
         const source = channels[sourceId];
-        const sourceVar = source['Variables'];
+        const sourceVar = source['Variables'] || 'No Source Var';
         const caller = source['CallerIDName'] || "AnonyMous";
         const calling = sourceVar['QUEUE_NAME'] || source['DNID'];
         const app = source['Application'];
