@@ -476,7 +476,7 @@ class Pano:
         #    return(None)
 
     async def originate(self,Channel,Exten=None,Context=None,Priority=None,Application=None,Data=None,Timeout=None,
-            CallerID=None,Variable=None,Account=None,EarlyMedia=None,Async=None,Codecs=None,ChannelId=None,OtherChannelId=None):
+            CallerID=None,Variable=None,Account=None,EarlyMedia=None,Async=None,Codecs=None,ChannelId=None,OtherChannelId=None,MAX_RETRIES=1):
         print('PINK ALERTE PINK ALERTE')
         hero={}
         hero['Action']='Originate'
@@ -492,7 +492,7 @@ class Pano:
 
         print('⚡️')
         print(hero)
-        resultat=await self.action(hero)
+        resultat=await self.action(hero,MAX_RETRIES=MAX_RETRIES)
         #resultat={}
         print(resultat)
         print('⚡️⚡️')
