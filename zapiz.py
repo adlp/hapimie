@@ -532,6 +532,7 @@ class Zapiz:
 
             if not isinstance(result,dict):
                 result={}
+                response=None
             elif 'template' in result.keys():
                 nextstep=result
                 nextstep['request']=request
@@ -550,15 +551,24 @@ class Zapiz:
                 if 'templateid' in result.keys():
                     templateid=result['templateid']
 
+                print(f"🌈{self.api_routes[verb][uri]['daType']}")
                 if  self.api_routes[verb][uri]['daType']=='html':
                     response=self.templates[templateid].TemplateResponse(result['template'],nextstep)
                 elif  self.api_routes[verb][uri]['daType']=='json':
                     response=JSONResponse(self.templates[templateid].TemplateResponse(result['template'],nextstep))
                 elif  self.api_routes[verb][uri]['daType']=='md':
                     # Cote temporaire, il va manquer les base truc de faire jolie.... (reellement il faudrait mettre ce html en cache puis lire le cache par la procedure noramal)
-                    html_content = markdown.markdown(md_text)
-                    response= f"<html><body>{html_content}</body></html>"
-
+                    #html_content = markdown.markdown(md_text)
+                    #html_content = markdown.markdown(self.templates[templateid].TemplateResponse(result['template'],nextstep))
+                    print(f"🌈🚪{result['template']}")
+                    with open('templates/'+result['template'],'r') as f:
+                        md_text=f.read()
+                    html_content = markdown.markdown(md_text,extensions=["fenced_code","tables","extra"])
+                    #response= f"<html><body>{html_content}</body></html>"
+                    response= HTMLResponse(content= html_content,status_code=200)
+                elif self.api_routes[verb][uri]['daType']=='Dhtml':
+                    print('DAaa')
+                    response= HTMLResponse(content= result.get('html_content',""),status_code=result.get('status_code',200))
                 else:
                     response='Uncreadible'
             elif 'redirect' in result.keys():
