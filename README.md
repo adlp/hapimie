@@ -1,153 +1,208 @@
-# hapimie
-Happy l'api amie de l'AMI
+# Hapimie
+
+> Happy l'API amie de l'AMI
 
 ![Licence: EUPL v1.2](https://img.shields.io/badge/License-EUPL%20v1.2-blue.svg)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)
 ![Panoramisk](https://img.shields.io/badge/Panoramisk-async%20AMI%20client-green.svg)
 
-# Le projet Hapimie
-
-Une API open source accompagnée d'une interface web, conçue pour acceder simplement a l'AMI d'asterisk
-
-L'interface web est aisement surchargeable, integre une auth local mais aussi openid, afin de presenter a votre facon votre acces a l'api
-
-Afin de decharger l'AMI d'asterisk, le projet ouvre une connexion permanante (evite ainsi les login/logout permanant) a l'AMI, puis pour certaines fonctionnalités gere un cache
-
-
-## TODO
-Creation de token pour bot d'API
+API REST open source accompagnée d'une interface web pour accéder simplement à l'AMI d'Asterisk.
 
 ## Fonctionnalités
 
-- API RESTful pour acceder a l'Asterisk Management Interface (AMI)
-- Interface web en HTML(djinja)/CSS/JS
+- **API RESTful** pour l'Asterisk Management Interface (AMI)
+- **Interface web** personnalisable (Jinja2/CSS/JS)
+- **Authentification** locale (CSV/bcrypt) et OIDC (Authentik, Keycloak...)
+- **Cache intelligent** pour réduire la charge sur Asterisk
+- **Connexion AMI persistante** avec reconnexion automatique
+- **Contrôle d'accès** par groupes (ACL)
+- **Audit trail** des actions utilisateurs
 
-## ⚖️ Licence
+## Installation rapide
 
-Ce projet est distribué sous la licence **European Union Public Licence v1.2 (EUPL)**.
+### Via pip
 
-Cela signifie que toute redistribution ou modification doit respecter les termes de la licence.  
-La licence est juridiquement reconnue dans tous les pays de l’Union européenne et compatible avec plusieurs autres licences open source.
-
-🔗 [Texte officiel de la licence (EUPL v1.2)](https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12)  
-📄 Voir le fichier [LICENSE](./LICENSE) pour plus d’informations.
-
-# Comment on le lance ?
-
-## Installation
-
-Dans un repertoire de votre choix deployez le git
+Non recommandée...
 
 ```bash
 git clone https://github.com/adlp/hapimie.git
 cd hapimie
+pip install -e .
+```
+
+### Via Docker
+
+```bash
+git clone https://github.com/adlp/hapimie.git
+cd hapimie
+cp .env.example .env
+# Éditer .env avec vos paramètres
+docker-compose -f docker/docker-compose.yml up -d
 ```
 
 ## Configuration
-  - copiez le dot.env.sample en .env, et adaptez le a votre environement
-  - copiez le hapimie-sample.cfg, dans le repertoire que pointeras DOHAPIMIETC et adaptez le a vos besoins
 
-## user.csv
-Si on desire faire une authentification local, le fichier user.csv devra se situer dans l'arbo presentée par DOHAPIMIETC
-Il sera au format login:password_hash:nom:email:groups
-Exemple de generation de mot de passe : 
+### 1. Variables d'environnement
+
+Copiez `.env.example` en `.env` et adaptez :
+
 ```bash
-python3 -c "import bcrypt; print(bcrypt.hashpw(b'monmotdepasse', bcrypt.gensalt()).decode())"
+cp .env.example .env
+```
+
+Variables principales :
+
+| Variable        | Description                 | Défaut      |
+| --------------- | --------------------------- | ----------- |
+| `AMI_HOST`      | Adresse du serveur Asterisk | `127.0.0.1` |
+| `AMI_PORT`      | Port AMI                    | `5038`      |
+| `AMI_USER`      | Utilisateur AMI             | `hapimie`   |
+| `AMI_PASS`      | Mot de passe AMI            | -           |
+| `SECRET_KEY`    | Clé secrète pour JWT        | -           |
+| `API_PORT`      | Port d'écoute               | `8888`      |
+| `HAPACL_FULL`   | Groupe admin                | `admin`     |
+| `HAPACL_Status` | Groupe lecture              | `users`     |
+
+### 2. Fichier de configuration (optionnel)
+
+```bash
+cp config/hapimie.cfg.example config/hapimie.cfg
+```
+
+### 3. Utilisateurs locaux
+
+Pour l'authentification locale, créez un fichier `users.csv` :
+
+```
+login:password_hash:nom:email:groups
+admin:$2b$12$...:Admin:admin@example.com:admin,users
+```
+
+Générer un hash de mot de passe :
+
+```bash
+./scripts/manage_users users.csv username --email user@example.com
 ```
 
 ## Lancement
-  - Ce projet s'appuie sur une image officielle de python, donc oui il met des données dans le /var/lib/docker, mais pour le moment pas jugées trop volumineuse.
-  - Il suffit juste de faire un ```docker-compose up -d```. Le contenaire cherchera les outils dont il a besoin (pip install via requierement.txt) puis se lancera
 
-# Extensionabilite
-L'idee est que vous puissiez rajouter, modifier l'interface (API et WUI) en fonction de l'usage de votre asterisk.
-  - Vous presentez a votre contenaire l'arbo de l'extension (dans mon cadre, mon application c'est ASTEC, je vous laisse regarder : la conf d'integration est la.. pour le moment :P)
-  - dans le .env vous positionnez le nom d'appel de votre appli
-  - En fonction de vos besoins, votre appli (en python) pourra contenir cela:
+### Développement
+
+```bash
+# Avec Python
+python -m hapimie
+
+# Avec Docker (inclut Asterisk de test)
+docker-compose -f docker/docker-compose.dev.yml up -d
+```
+
+### Production
+
+```bash
+docker-compose -f docker/docker-compose.yml up -d
+```
+
+## Structure du projet
+
+```
+hapimie/
+├── src/hapimie/          # Code source (package Python)
+│   ├── core/             # Client AMI, cache
+│   ├── web/              # Framework web, auth
+│   ├── config/           # Gestion configuration
+│   ├── validation/       # Validation des entrées
+│   ├── exceptions/       # Exceptions personnalisées
+│   └── logging/          # Logging et audit
+│
+├── config/               # Fichiers de configuration
+│   ├── asterisk/         # Config Asterisk (dev)
+│   └── hapimie.cfg.example
+│
+├── docker/               # Fichiers Docker
+│   ├── Dockerfile
+│   ├── docker-compose.yml
+│   └── docker-compose.dev.yml
+│
+├── docs/                 # Documentation
+├── scripts/              # Utilitaires
+├── tests/                # Suite de tests
+├── templates/            # Templates Jinja2
+└── static/               # Fichiers statiques
+```
+
+## API
+
+### Endpoints principaux
+
+| Méthode | Endpoint         | Description               | ACL    |
+| ------- | ---------------- | ------------------------- | ------ |
+| GET     | `/api/status`    | Channels actifs           | Status |
+| GET     | `/api/endpoints` | Liste des endpoints       | Status |
+| GET     | `/api/queue`     | Statut des queues         | Status |
+| GET     | `/api/dbGet`     | Base de données Asterisk  | Full   |
+| POST    | `/api/HangUp`    | Raccrocher un channel     | Full   |
+| GET     | `/api/help`      | Commandes AMI disponibles | -      |
+
+Documentation complète : [docs/api-reference.md](docs/api-reference.md)
+
+## Extensibilité
+
+Hapimie peut être étendu avec vos propres routes et templates :
+
 ```python
-#!/usr/bin/env python3
+from hapimie import app, asti
 
-import sys
-import os
+# Ajouter un template personnalisé
+app.add_template('mon_template_dir')
 
-# Chemin absolu vers le dossier 'kernel'
-kernel_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'hapimie'))
+# Ajouter une route
+@app.api_add("/api/ma-route", daType='json', acl='users')
+async def ma_route(var_session, params={}):
+    result = await asti.channels()
+    return result
 
-# Ajout au chemin d'import
-if kernel_path not in sys.path:
-    sys.path.insert(0, kernel_path)
-
-#import hapimie
-#hapimie.app.run()
-
-from hapimie import app,asti
-
-[...]
-
-# Destruction de toutes les routes par defaut
-#if Debug == 0:
-#    routeToKill=app.api_lst()
-#    for verb in routeToKill.keys():
-#        for route in routeToKill[verb]:
-#            if route.startswith('/log'):
-#                continue
-#            app.api_del(route,verb)
-
-# Creation du nouvel environnement
-app.add_template('astemplate')
-app.api_add("/",form_newHome)
-app.api_add("/standard",form_gestStd,acl=os.getenv('HAPACL_Status',None))
-app.api_add("/api/std_status",api_std_status,acl=os.getenv('HAPACL_FULL',None))
-app.api_add("/api/std_status",api_std_status,verb="POST",acl=os.getenv('HAPACL_FULL',None))
-
-# Et... C'est partiiiiiiiiiiiiii
-print('Ready to Get Connexion')
 app.run()
 ```
 
-Cela permettra de recreer la route / vers votre appli a vous, de meme que la route /standard (mais avec une gestion des droits en fonction du groupe de votre Utilisateur)
+## Tests
 
+```bash
+# Tests unitaires
+pytest tests/unit/ -v
 
-# Doc a ameliorer
-## Configuration
-  * Le fichier de configuration trouvera naturellement sa place là /usr/local/etc/hapimie.cfg, mais il peut etre specifié lors de l'appel d'hapimie, avec le parametre --cfgfile
-```ini /usr/local/etc/hapimie.cfg
-API_PORT= 8888
-API_HOST= 0.0.0.0
-API_PATH= /api
-AMI_HOST= 127.0.0.1
-AMI_PORT= 5038
-AMI_USER= asterisk
-AMI_PASS= Sangoku
-MAX_RETRIES= 3
-RETRY_DELAY= 3
-SECRET_KEY= supersecretkey
-ALGORITHM= HS256
-TOKEN_EXPIRY_HOURS= 2
-AUTHENTIK_ENABLED= False
-AUTHENTIK_TOKEN_URL= https://authentik.example.com/application/o/token/
-AUTHENTIK_CLIENT_ID= your-client-id
-AUTHENTIK_CLIENT_SECRET= your-client-secret
-SENTRY_DSN=sentry-url'n-token
+# Avec couverture
+pytest tests/ --cov=hapimie --cov-report=html
+
+# Tests avec Docker (incluant Asterisk)
+docker-compose -f docker/docker-compose.dev.yml --profile test up tests
 ```
-    * Les parametres commencant par API_ permettent de configurer les basique de l'api : son port d'ecoute, l'ip sur laquelle elle ecoute et le chemin de l'aou
-    * Les parametres commencant par AMI_ permettent de configurer les acces à l'AMI d'asterisk (host asterisk, port de l'ami, login et mot de passe)
-    * MAX_RETRIES et RETRY_DELAY sont pour les auto-reconnexion a l'AMI en cas de perte de connexion
-    * SECRET, ALGORITHM et TOKEN_EXPIRY_HOUR permettent de configurer le comportement du token
-    * AUTHENTIK_ sont les parametres de configuration de l'authentification passant par un serveur authentik
-    * SENTRY_DSN permet de remonter les plantage de l'appli. Si la configuration sentry est prise en compte le message "Sentry enabled" apparaitra au demarrage
 
-  * Lors du premier usage il convient de creer un compte et un mot de passe, le fichier des utilisateurs est users.csv dans le meme repertoire que hapimie
+## Documentation
 
-# 🧪 Tests
-J'voudrais bien... mais bon...
+- [Installation](docs/installation.md)
+- [Configuration](docs/configuration.md)
+- [Référence API](docs/api-reference.md)
+- [Architecture](docs/architecture.md)
+- [Développement](docs/development.md)
+- [Dépannage](docs/troubleshooting.md)
 
-# 👤 Auteur
-Développé par Antoine DELAPORTE
-📧 Contact : hapiomie@baball.eu
-📅 Année : 2025
-🤝 Contributions : [CONTRIBUTING.md](./CONTRIBUTING.md)
+## Sécurité
 
-Les contributions sont les bienvenues !
-Merci de consulter le fichier [CONTRIBUTING.md](./CONTRIBUTING.md) (à créer) pour les règles de contribution.
+Voir [SECURITY.md](SECURITY.md) pour :
 
+- Signaler une vulnérabilité
+- Bonnes pratiques de déploiement
+- Configuration sécurisée
+
+## Licence
+
+Ce projet est distribué sous la licence **European Union Public Licence v1.2 (EUPL)**.
+
+[Texte officiel de la licence](https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12) | [LICENSE](LICENSE)
+
+## Auteur
+
+Développé par **Antoine DELAPORTE**
+
+- Contact : hapimie@baball.eu
+- Contributions : [CONTRIBUTING.md](CONTRIBUTING.md)
