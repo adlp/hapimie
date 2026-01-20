@@ -415,7 +415,7 @@ class Pano:
         resultat={}
         hero = {"Action": "Command","command": "database show"}
         resp=await self.action(hero)
-        datas=resp['Output']
+        datas=resp.get('Output',None)
         datas.pop()
         for ligne in datas:
             cmd,desc=ligne.split(':',1)
