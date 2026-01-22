@@ -5,10 +5,15 @@
 # Licensed under the EUPL v.1.2
 # See LICENSE file or https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12
 
+from instreq import install_requirements
+install_requirements("/srv/hapimie/hapimie/requirements.txt","/srv/pip-install")
+import sys
+sys.path.insert(0, "/srv/pip-install")
+
 from pano import Pano
 from zapiz import Zapiz
 
-import os,argparse,sys,configparser
+import os,argparse,configparser
 
 parser = argparse.ArgumentParser(
     description="Happy l'api amie de l'AMI"
