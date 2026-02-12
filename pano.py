@@ -345,7 +345,8 @@ class Pano:
             if ep in keysCacheToKill:
                 keysCacheToKill.remove(ep)
         for ep in keysCacheToKill:
-            self._epDetail.remove(ep)
+            if isinstance(self._epDetail,list):
+                self._epDetail.remove(ep)
             # Suppression de tout les groupes existant du phone
             for varName in self._epGrpVar.keys():
                 for varValue in self._epGrpVar[varName]:
