@@ -90,6 +90,33 @@ for elem in ['TOKEN_EXPIRY_HOURS']:
 if 'SENTRY_DSN' in cfg.keys():
     print("Sentry Enabling")
     import sentry_sdk
+    from sentry_sdk.types import Event, Hint
+
+    IGNORED_EXCEPTIONS = (
+        ConnectionResetError,
+        ConnectionAbortedError,
+        BrokenPipeError,
+        #asyncio.TimeoutError,
+        )
+
+    def sentry_before_send(event: Event, hint: Hint): # -> Event | None:
+        if "exc_info" in hint:
+            exc_type, exc_value, tb = hint["exc_info"]
+
+            # Ignore exceptions TCP classiques
+            if issubclass(exc_type, IGNORED_EXCEPTIONS):
+                return None
+
+            # Ignore erreurs AMI connues
+            msg = str(exc_value)
+
+            if "TCOTransport closed=True" in msg:
+                return None
+
+            if "Connection Lost" in msg:
+                return None
+
+        return event
 
     sentry_sdk.init(
         dsn=cfg['SENTRY_DSN'],
@@ -98,6 +125,7 @@ if 'SENTRY_DSN' in cfg.keys():
         # Add data like request headers and IP for users,
         # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
         send_default_pii=True,
+        before_send=sentry_before_send
         )
 
 asti=Pano(host=cfg['AMI_HOST'], port=cfg['AMI_PORT'], login=cfg['AMI_USER'], password=cfg['AMI_PASS'])
