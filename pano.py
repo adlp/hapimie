@@ -351,7 +351,7 @@ class Pano:
             for varName in self._epGrpVar.keys():
                 for varValue in self._epGrpVar[varName]:
                     if ep in self._epGrpVar[varName][varValue]:
-                        epGrpVar[varName][varValue].remove(ep)
+                        self._epGrpVar[varName][varValue].remove(ep)
         #print(f'☎️  stop')
         return(ret)
 
