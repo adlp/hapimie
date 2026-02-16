@@ -33,6 +33,10 @@
       integrations: [
         new Sentry.BrowserTracing(),
       ],
+      ignoreErrors: [
+        /Network Error/i,
+        /Fetch Error/i,
+        ],
       environment: "production",
       release: "hapimie@...",
       tags: { module: "frontend" },
