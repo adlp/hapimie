@@ -110,7 +110,7 @@ if 'SENTRY_DSN' in cfg.keys():
             # Ignore erreurs AMI connues
             msg = str(exc_value)
 
-            if "TCOTransport closed=True" in msg:
+            if "TCPTransport closed=True" in msg:
                 return None
 
             if "Connection Lost" in msg:
