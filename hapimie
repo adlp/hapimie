@@ -100,22 +100,27 @@ if 'SENTRY_DSN' in cfg.keys():
         )
 
     def sentry_before_send(event: Event, hint: Hint): # -> Event | None:
-        if "exc_info" in hint:
-            exc_type, exc_value, tb = hint["exc_info"]
-
+        if 'exc_info' in hint:
+            exc_type, exc_value, tb = hint['exc_info']
+            
+            # Ignorer par type d'exception
+            if isinstance(exc_value, (KeyboardInterrupt, SystemExit)):
+                return None
+            
             # Ignore exceptions TCP classiques
             if issubclass(exc_type, IGNORED_EXCEPTIONS):
                 return None
 
-            # Ignore erreurs AMI connues
-            msg = str(exc_value)
-
-            if "TCPTransport closed=True" in msg:
+            # Ignorer par message
+            ignored_messages = [
+                "TCPTransport closed=True",
+                "Connection Lost",
+                "Connection reset by peer",
+                "Broken pipe",
+            ]
+            if any(msg in str(exc_value) for msg in ignored_messages):
                 return None
-
-            if "Connection Lost" in msg:
-                return None
-
+        
         return event
 
     sentry_sdk.init(
