@@ -100,16 +100,22 @@ if 'SENTRY_DSN' in cfg.keys():
         )
 
     def sentry_before_send(event: Event, hint: Hint): # -> Event | None:
+        print('☠️  Before before')
         if 'exc_info' in hint:
             exc_type, exc_value, tb = hint['exc_info']
             
             # Ignorer par type d'exception
             if isinstance(exc_value, (KeyboardInterrupt, SystemExit)):
+                print(f'☠️  Noned ignored !!')
                 return None
             
             # Ignore exceptions TCP classiques
             if issubclass(exc_type, IGNORED_EXCEPTIONS):
+                print(f'☠️  Noned ignored !!')
                 return None
+
+# in unable to perform operation on <TCPTransport closed=True reading=False 0x564949a8bb50>; the handler is closed
+            print(f'☠️  Before in {str(exc_value)}')
 
             # Ignorer par message
             ignored_messages = [
@@ -119,14 +125,16 @@ if 'SENTRY_DSN' in cfg.keys():
                 "Broken pipe",
             ]
             if any(msg in str(exc_value) for msg in ignored_messages):
+                print(f'☠️  Noned string !!')
                 return None
         
+        print(f'☠️  ☠️ Event !!')
         return event
 
     sentry_sdk.init(
         dsn=cfg['SENTRY_DSN'],
         environment=cfg['SENTRY_RELEASE'],
-        release="hapimie@3.0",
+        release="hapimie@3.1",
         # Add data like request headers and IP for users,
         # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
         send_default_pii=True,
