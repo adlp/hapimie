@@ -32,7 +32,6 @@ class Pano:
 
         self._trackeurAMI={}
         self._trackeurAMI['Originate']={}
-        self._mc=False
         self._manager = Manager(host=host,port=port,username=login,secret=password,forgetable_actions=('login',))
 
     class Cache:
@@ -418,8 +417,6 @@ class Pano:
         hero = {"Action": "Command","command": "database show"}
         resp=await self.action(hero)
         datas=resp.get('Output',None)
-        if datas==None:
-            return(None)
         datas.pop()
         for ligne in datas:
             cmd,desc=ligne.split(':',1)
@@ -505,13 +502,8 @@ class Pano:
     ####### PROTOCOL !!!!!
     def startup(self):
         print("Connexion a l'AMI")
-        try:
-            self._manager.register_event('*', self.on_event_OriginateResponse)
-            self._manager.connect()
-        except OSError:
-            self._mc=False
-        else:
-            self._mc=True
+        self._manager.register_event('*', self.on_event_OriginateResponse)
+        self._manager.connect()
 
     async def wait_for_protocol(self):
         """
@@ -519,12 +511,8 @@ class Pano:
         """
         #for i in range(20):  # max 2 secondes
         for i in range(5):  # max 2 secondes
-            try:
-                if self._manager.protocol:
-                    self._mc=True
-                    return
-            except OSError:
-                self._mc=False
+            if self._manager.protocol:
+                return
             print(f"Reconnexion a l'AMI {i}")
             await asyncio.sleep(0.2)
         raise RuntimeError("Connexion AMI non établie")
