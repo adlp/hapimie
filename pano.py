@@ -433,7 +433,7 @@ class Pano:
                 courant[preClef]=valeur
             elif preClef !=None:
                 #print(f'Working on the {preClef} with {ligne}')
-                courant[preClef]+=ligne
+                courant[preClef]+="\n"+ligne
         return(resultat)
 
     async def db_get(self,key=None,hidden=None,idx=True):
