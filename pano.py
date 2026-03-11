@@ -418,15 +418,22 @@ class Pano:
         resp=await self.action(hero)
         datas=resp.get('Output',None)
         datas.pop()
+        #print(f"FEED DB")
+        preClef=None
         for ligne in datas:
-            cmd,desc=ligne.split(':',1)
-            chemin=cmd.rstrip()[1:]
-            cles=chemin.split('/')
-            valeur=desc[1:].rstrip()
-            courant = resultat
-            for cle in cles[:-1]:
-                courant=courant.setdefault(cle,{})
-            courant[cles[-1]]=valeur
+            if len(ligne)>50 and (ligne[0]=='/' and ':' in ligne):
+                cmd,desc=ligne.split(':',1)
+                chemin=cmd.rstrip()[1:]
+                cles=chemin.split('/')
+                valeur=desc[1:].rstrip()
+                courant = resultat
+                for cle in cles[:-1]:
+                    courant=courant.setdefault(cle,{})
+                preClef=cles[-1]
+                courant[preClef]=valeur
+            elif preClef !=None:
+                #print(f'Working on the {preClef} with {ligne}')
+                courant[preClef]+=ligne
         return(resultat)
 
     async def db_get(self,key=None,hidden=None,idx=True):
