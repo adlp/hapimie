@@ -436,7 +436,9 @@ class Pano:
                 courant[preClef]+="\n"+ligne
         return(resultat)
 
-    async def db_get(self,key=None,hidden=None,idx=True):
+    async def db_get(self,key=None,hidden=None,idx=True,refresh=False):
+        if refresh:
+            self._db=self.Cache(self._feed_db,splitKeyKey="/",timeout=1)
         print('💽')
 
         ret=await self._db.dict()
@@ -484,15 +486,14 @@ class Pano:
         #    return(None)
 
     async def originate(self,Channel,Exten=None,Context=None,Priority=None,Application=None,Data=None,Timeout=None,
-            CallerID=None,Variable=None,Account=None,EarlyMedia=None,Async=None,Codecs=None,ChannelId=None,OtherChannelId=None,MAX_RETRIES=1):
-        print('PINK ALERTE PINK ALERTE')
+            CallerID=None,Variable=None,Account=None,EarlyMedia=None,Async=None,Codecs=None,ChannelId=None,OtherChannelId=None,MAX_RETRIES=1,debug=False):
         hero={}
         hero['Action']='Originate'
-        print('⚡️')
         for key,value in {"Channel":Channel,"Exten":Exten,"Context":Context,"Priority":Priority,"Application":Application,"Data":Data,"Timeout":Timeout,
                 "CallerID":CallerID,"Variable":Variable,"Account":Account,"EarlyMedia":EarlyMedia,"Async":Async,"Codecs":Codecs,"ChannelId":ChannelId,"OtherChannelId":OtherChannelId}.items():
             if value is not None:
-                print(value)
+                if debug:
+                    print(value)
                 if key == "Variable":
                     hero[key]=",".join(f"{k}={v}" for k, v in value.items())
                 else:
@@ -500,7 +501,7 @@ class Pano:
 
         print('⚡️')
         print(hero)
-        resultat=await self.action(hero,MAX_RETRIES=MAX_RETRIES)
+        resultat=await self.action(hero,MAX_RETRIES=MAX_RETRIES,RETRY_DELAY=Timeout,debug=debug)
         #resultat={}
         print(resultat)
         print('⚡️⚡️')
@@ -577,7 +578,7 @@ class Pano:
                 #print(f"👽️ Last action hero {hero}")
                 break
             except (asyncio.TimeoutError, ConnectionError) as e:
-                print(f"⚠️ Tentative {attempt} échouée : {e}")
+                print(f"⚠️ Tentative {attempt}/{MAX_RETRIES} échouée :  {type(e).__name__}/{e}")
                 if attempt < MAX_RETRIES:
                     print(f"⏳ Nouvelle tentative dans {RETRY_DELAY} secondes...")
                     self._manager.close()
