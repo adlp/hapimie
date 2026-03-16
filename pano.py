@@ -464,7 +464,7 @@ class Pano:
             return({ key:courant})
         else:
             if not idx:
-                return(ret[key])
+                return(ret.get(key,None))
             return({ key:ret[key]})
 
     async def db_set(self,key,value):
