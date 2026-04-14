@@ -41,7 +41,7 @@ class Zapiz:
             secret_key="your-secret-key",
             title=None, description=None, version= None, docs_url=None, redoc_url=None, openapi_url=None,
             template_dir="templates",static_dir="static",token_url="token",root=os.path.abspath(os.getcwd())+"/",
-            sentry=None):
+            sentry=None,debug=False):
         self.host = host
         self.port = port
         self.app = FastAPI(title=title,description=description,version=version,docs_url=docs_url,redoc_url=redoc_url,openapi_url=openapi_url)
@@ -66,6 +66,7 @@ class Zapiz:
         self.oidc_usin_url=oidc_usin_url
         self.oidc_issuer=oidc_issuer
         self.sentry=sentry
+        self.debug=debug
 
         self.setup_auth_routes()
 
@@ -89,6 +90,17 @@ class Zapiz:
                 threading.Timer(1.0, stop_server).start()
 
                 return response
+
+    def bugprint(self,chaine,liste1=[]):
+        if not self.debug:
+            return
+        if len(liste1):
+            for i in liste1:
+                print(chaine,end=' ')
+                print(i)
+            print('')
+        else:
+            print(chaine)
 
     def run(self):
         uvicorn.run(self.app, host=self.host, port=self.port)
@@ -139,9 +151,7 @@ class Zapiz:
         internal_claims['auth_method']='local'
         for i in  ['name','username','groups','email']:
             internal_claims[i]=user_data.get(i)
-        print('🏘️')
-        print(internal_claims)
-        print(user_data)
+        self.bugprint('🏘️ auth_local_login',[ internal_claims, user_data ])
 
         # Générer tokens internes
         access_token = self.auth_create_token(internal_claims, timedelta(minutes=self.token_access_timeout_min), "access")
@@ -187,7 +197,7 @@ class Zapiz:
         code=None
         if varSession.get('form'):
             code=varSession['form'].get('code')
-        print(f'🤑 code : {code}')
+        self.bugprint(f'🤑 auth_oidc_callback _ code : {code}')
         # Échange du code contre un token Authentik
         data={
                 "grant_type": "authorization_code",
@@ -198,20 +208,14 @@ class Zapiz:
             }
         async with httpx.AsyncClient() as client:
             resp = await client.post(self.oidc_toke_url, data=data)
-        print(f'🔫 {self.oidc_toke_url}')
-        print('data')
-        print(data)
-        print('resp')
-        print(resp)
+        self.bugprint(f'🔫 auth_oidc_callback {self.oidc_toke_url} data et resp',[data,resp])
         tokens = resp.json()
         id_token = tokens.get("id_token")
         access_token_oidc = tokens.get("access_token")
 
-        print(tokens)
-        print(self.oidc_issuer)
+        self.bugprint(f'🔫 auth_oidc_callback {self.oidc_toke_url} token et oidc_issuer',[tokens,self.oidc_issuer])
         #print(decode_payload(tokens.get('access_token')))
         #print(decode_payload(tokens.get('id_token')))
-        print(f'🔫 {self.oidc_toke_url}')
 
         if not id_token:
             return({'redirect':'/login'})
@@ -243,7 +247,7 @@ class Zapiz:
                 internal_claims['username']=payload.get(i)
 
         if not (internal_claims['name'] and internal_claims['email'] and internal_claims['groups']):
-            print('🚒🚒🚒🚒🚒🚒🚒🚒🚒🚒🚒')
+            self.bugprint('auth_oidc_callback 🚒🚒🚒🚒🚒🚒🚒🚒🚒🚒🚒')
             async with httpx.AsyncClient() as client:
                 userinfo_resp = await client.get(
                     self.oidc_usin_url,
@@ -257,8 +261,7 @@ class Zapiz:
 
         internal_claims['auth_method']='oidc'
 
-        print('🏚️')
-        print(internal_claims)
+        self.bugprint('🏚️ auth_oidc_callback internal_claims',[internal_claims])
         # Générer tokens internes
         access_token = self.auth_create_token(internal_claims, timedelta(minutes=self.token_access_timeout_min), "access")
         refresh_token = self.auth_create_token(internal_claims, timedelta(days=self.token_refresh_timeout_days), "refresh")
@@ -278,8 +281,7 @@ class Zapiz:
             payload = jwt.decode(refresh_token, self.secret_key, algorithms=[self.algo])
         except JWTError:
             return JSONResponse({"error": "Invalid refresh token"}, status_code=401)
-        print('💋')
-        print(payload)
+        self.bugprint('💋 auth_refresh payload',[payload])
     
         # 3. Vérifier qu’il s’agit bien d’un refresh token
         if payload.get("type") != "refresh":
@@ -300,7 +302,7 @@ class Zapiz:
         new_refresh_token = self.auth_create_token(internal_claims, timedelta(days=self.token_refresh_timeout_days), "refresh")
 
         # 7. Poser les cookies et renvoyer
-        print('💋💋')
+        self.bugprint('💋💋 auth_refresh')
         #response = JSONResponse({"status": "ok"})
         if next:
             referer=next
@@ -316,19 +318,17 @@ class Zapiz:
         nextstep['request']=request
         # 1. Récupérer le token d'accès depuis le cookie
         access_token = request.cookies.get("access_token")
-        print('🤑')
-        print(access_token)
+        self.bugprint('🤑 auth_secret access_token',[access_token])
         current_url = str(request.url)
         payload={}
         if access_token:
             # 2. Vérifier le token
             try:
                 payload = jwt.decode(access_token, self.secret_key, algorithms=[self.algo])
-                print('💀 Token alive')
-                print(payload)
+                self.bugprint('💀 Token alive auth_secret ,payload',payload)
             except JWTError:
                 # Token invalide ou expiré → redirection vers /refresh avec next
-                print('💀 Token expiré')
+                self.bugprint('💀 Token expiré auth_secret')
     
         # 3. Extraire les infos de l'utilisateur depuis le token interne
         user={}
@@ -480,16 +480,16 @@ class Zapiz:
                 return JSONResponse( status_code=404, content={"detail": "Ressource introuvable"})
                 #return HTMLResponse(content= "<h1>404 - Page non trouvée</h1>", status_code=404)
             else:
-                print(self.api_routes[verb][uri])
+                self.bugprint("_secure_api_tab,wrappper",[self.api_routes[verb][uri]])
 
             varSession={}
             varSession['request']=request
             # 🔍 Détection de la méthode HTTP
             #verb = request.method
             #uri  = request.url.path
-            print(f"✅ wrapper {verb} {uri} réussie : {varSession}")
-           # print(f"💡 request : {request.path_params}")
-            print(f"💡 request : {request}")
+            self.bugprint(f"✅ wrapper {verb} {uri} réussie : {varSession}")
+            #print(f"💡 request : {request.path_params}")
+            #print(f"💡 request : {request}")
             varSession['verb']=verb
             if verb=="POST":
                 content_type = request.headers.get("content-type", "")
@@ -504,11 +504,10 @@ class Zapiz:
                 for i in dict(request.query_params):
                     varSession['form'][i]=request.query_params.get(i)
 
-            print(f'🗯️{uri}')
+            #print(f'🗯️{uri}')
             curUser=self.api_tokens_status(request)
             if curUser:
-                print('🗯️🗯️')
-                print(curUser)
+                self.bugprint('🗯️🗯️',[curUser])
                 for i in ['sub','name','email','groups']:
                     varSession[i]=curUser['datas'].get(i)
 
@@ -544,14 +543,14 @@ class Zapiz:
                 #print('👽️ resul ta da')
                 #print(result.keys())
                 if self.sentry:
-                    print(f'🚒 {self.sentry}')
+                    #print(f'🚒 {self.sentry}')
                     nextstep['sentry']=self.sentry
-                    print(nextstep)
+                    #print(nextstep)
                 templateid='base'
                 if 'templateid' in result.keys():
                     templateid=result['templateid']
 
-                print(f"🌈{self.api_routes[verb][uri]['daType']}")
+                #print(f"🌈{self.api_routes[verb][uri]['daType']}")
                 if  self.api_routes[verb][uri]['daType']=='html':
                     response=self.templates[templateid].TemplateResponse(result['template'],nextstep)
                 elif  self.api_routes[verb][uri]['daType']=='json':
@@ -560,21 +559,21 @@ class Zapiz:
                     # Cote temporaire, il va manquer les base truc de faire jolie.... (reellement il faudrait mettre ce html en cache puis lire le cache par la procedure noramal)
                     #html_content = markdown.markdown(md_text)
                     #html_content = markdown.markdown(self.templates[templateid].TemplateResponse(result['template'],nextstep))
-                    print(f"🌈🚪{result['template']}")
+                    #print(f"🌈🚪{result['template']}")
                     with open('templates/'+result['template'],'r') as f:
                         md_text=f.read()
                     html_content = markdown.markdown(md_text,extensions=["fenced_code","tables","extra"])
                     #response= f"<html><body>{html_content}</body></html>"
                     response= HTMLResponse(content= html_content,status_code=200)
                 elif self.api_routes[verb][uri]['daType']=='Dhtml':
-                    print('DAaa')
+                    #print('DAaa')
                     response= HTMLResponse(content= result.get('html_content',""),status_code=result.get('status_code',200))
                 else:
                     response='Uncreadible'
             elif 'redirect' in result.keys():
                 response = RedirectResponse(url=result.get('redirect',"/"),status_code=result.get('status_code',303))
             elif 'fileResponse' in result.keys():
-                print(f'🖼️  {result["fileResponse"]}')
+                #print(f'🖼️  {result["fileResponse"]}')
                 response = FileResponse(result['fileResponse'])
             else:
                 return(result)
