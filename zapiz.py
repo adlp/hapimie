@@ -96,6 +96,95 @@ class Zapiz:
 
                 return response
 
+    def extract_request_info(self,obj):
+        uri = None
+        ip = None
+        user = None
+
+        if isinstance(obj, Request):
+            state = obj.scope.get("state")
+            if isinstance(state, dict):
+                user = state.get("user")
+            else:
+                user = getattr(state, "user", None)
+
+            ret= {
+                "ip": obj.client.host,
+                "user": user,
+                "mth": obj.method,
+                "uri": obj.url.path
+                #"status_code": response.status_code
+                }
+            #self.logger.info(f"Request {ret['user']}@{ret['ip']}:{ret['uri']}")
+            return(ret)
+
+        # Franchement c'est tout a refaire en dessous là (TODO : reDO or better... DO!!!)
+        # --- CAS 1 : Request (Starlette / FastAPI) ---
+        if hasattr(obj, "url"):
+            uri = str(obj.url)
+
+        if hasattr(obj, "client") and obj.client:
+            ip = getattr(obj.client, "host", None)
+
+        # user via request.state
+        if hasattr(obj, "state"):
+            user = getattr(obj.state, "user", None)
+
+        # fallback via scope
+        if hasattr(obj, "scope"):
+            scope = obj.scope
+
+            # URI fallback
+            uri = uri or scope.get("path")
+
+            # IP fallback
+            if not ip:
+                client = scope.get("client")
+                if client:
+                    ip = client[0]
+
+            # user fallback
+            state = scope.get("state")
+            if isinstance(state, dict):
+                user = user or state.get("user")
+
+        # --- CAS 2 : dict (type varSession probable) ---
+        if isinstance(obj, dict):
+            uri = uri or obj.get("uri") or obj.get("url")
+            ip = ip or obj.get("ip") or obj.get("client_ip")
+            user = user or obj.get("user")
+
+        # --- CAS 3 : objet custom ---
+        if not isinstance(obj, dict):
+            print(obj)
+            return(None)
+            uri = uri or getattr(obj, "uri", None) or getattr(obj, "url", None)
+            ip = ip or getattr(obj, "ip", None)
+            user = user or getattr(obj, "user", None)
+
+        return {
+            "uri": uri,
+            "ip": ip,
+            "user": user,
+        }
+
+    def bugprint(self,infos,chaine,liste1=[]):
+        #if isinstance(infos,Request):
+        #    return()
+        trucs=self.extract_request_info(infos)
+        if trucs is not None:
+                pouette=trucs['user']
+        else:
+                pouette="Anonymous"
+
+        if not self.debug:
+            return
+        if len(liste1):
+            for i in liste1:
+                self.logger.info(f"{pouette} {chaine}: {i}")
+        else:
+            self.logger.info(f"{pouette} {chaine}")
+
     def _setup_middlewares(self):
         @self.app.middleware("http")
         async def log_requests(request: Request, call_next):
@@ -103,32 +192,19 @@ class Zapiz:
 
             response = await call_next(request)
             duration = time.time() - start
-            state = request.scope.get("state")
-
-            if isinstance(state, dict):
-                user = state.get("user")
-            else:
-                user = getattr(state, "user", None)
+            trucs=self.extract_request_info(request)
 
             self.logger.info(
-                f"{request.client.host}({user}) "
-                f"{request.method} {request.url.path} "
+                f"{trucs['ip']}({trucs['user']}) "
+                f"{trucs['mth']} {trucs['uri']} "
                 f"{response.status_code} "
                 f"{duration:.3f}s"
-            )
-
+                )
+            #    f"{request.client.host}({user}) "
+            #    f"{request.method} {request.url.path} "
+            #    f"{response.status_code} "
+            #    f"{duration:.3f}s"
             return response
-
-    def bugprint(self,chaine,liste1=[]):
-        if not self.debug:
-            return
-        if len(liste1):
-            for i in liste1:
-                print(chaine,end=' ')
-                print(i)
-            print('')
-        else:
-            print(chaine)
 
     def run(self):
         uvicorn.run(self.app, host=self.host, port=self.port,access_log=False)
@@ -179,7 +255,7 @@ class Zapiz:
         internal_claims['auth_method']='local'
         for i in  ['name','username','groups','email']:
             internal_claims[i]=user_data.get(i)
-        self.bugprint('🏘️ auth_local_login',[ internal_claims, user_data ])
+        self.bugprint(varSession,'🏘️ auth_local_login',[ internal_claims, user_data ])
 
         # Générer tokens internes
         access_token = self.auth_create_token(internal_claims, timedelta(minutes=self.token_access_timeout_min), "access")
@@ -225,7 +301,7 @@ class Zapiz:
         code=None
         if varSession.get('form'):
             code=varSession['form'].get('code')
-        self.bugprint(f'🤑 auth_oidc_callback _ code : {code}')
+        self.bugprint(varSession,f'🤑 auth_oidc_callback _ code : {code}')
         # Échange du code contre un token Authentik
         data={
                 "grant_type": "authorization_code",
@@ -236,12 +312,12 @@ class Zapiz:
             }
         async with httpx.AsyncClient() as client:
             resp = await client.post(self.oidc_toke_url, data=data)
-        self.bugprint(f'🔫 auth_oidc_callback {self.oidc_toke_url} data et resp',[data,resp])
+        self.bugprint(varSession,f'🔫 auth_oidc_callback {self.oidc_toke_url} data et resp',[data,resp])
         tokens = resp.json()
         id_token = tokens.get("id_token")
         access_token_oidc = tokens.get("access_token")
 
-        self.bugprint(f'🔫 auth_oidc_callback {self.oidc_toke_url} token et oidc_issuer',[tokens,self.oidc_issuer])
+        self.bugprint(varSession,f'🔫 auth_oidc_callback {self.oidc_toke_url} token et oidc_issuer',[tokens,self.oidc_issuer])
         #print(decode_payload(tokens.get('access_token')))
         #print(decode_payload(tokens.get('id_token')))
 
@@ -275,7 +351,7 @@ class Zapiz:
                 internal_claims['username']=payload.get(i)
 
         if not (internal_claims['name'] and internal_claims['email'] and internal_claims['groups']):
-            self.bugprint('auth_oidc_callback 🚒🚒🚒🚒🚒🚒🚒🚒🚒🚒🚒')
+            self.bugprint(varSession,'auth_oidc_callback 🚒🚒🚒🚒🚒🚒🚒🚒🚒🚒🚒')
             async with httpx.AsyncClient() as client:
                 userinfo_resp = await client.get(
                     self.oidc_usin_url,
@@ -289,7 +365,7 @@ class Zapiz:
 
         internal_claims['auth_method']='oidc'
 
-        self.bugprint('🏚️ auth_oidc_callback internal_claims',[internal_claims])
+        self.bugprint(varSession,'🏚️ auth_oidc_callback internal_claims',[internal_claims])
         # Générer tokens internes
         access_token = self.auth_create_token(internal_claims, timedelta(minutes=self.token_access_timeout_min), "access")
         refresh_token = self.auth_create_token(internal_claims, timedelta(days=self.token_refresh_timeout_days), "refresh")
@@ -309,7 +385,7 @@ class Zapiz:
             payload = jwt.decode(refresh_token, self.secret_key, algorithms=[self.algo])
         except JWTError:
             return JSONResponse({"error": "Invalid refresh token"}, status_code=401)
-        self.bugprint('💋 auth_refresh payload',[payload])
+        self.bugprint(request,'💋 auth_refresh payload',[payload])
     
         # 3. Vérifier qu’il s’agit bien d’un refresh token
         if payload.get("type") != "refresh":
@@ -330,7 +406,7 @@ class Zapiz:
         new_refresh_token = self.auth_create_token(internal_claims, timedelta(days=self.token_refresh_timeout_days), "refresh")
 
         # 7. Poser les cookies et renvoyer
-        self.bugprint('💋💋 auth_refresh')
+        self.bugprint(request,'💋💋 auth_refresh')
         #response = JSONResponse({"status": "ok"})
         if next:
             referer=next
@@ -346,17 +422,17 @@ class Zapiz:
         nextstep['request']=request
         # 1. Récupérer le token d'accès depuis le cookie
         access_token = request.cookies.get("access_token")
-        self.bugprint('🤑 auth_secret access_token',[access_token])
+        self.bugprint(varSession,'🤑 auth_secret access_token',[access_token])
         current_url = str(request.url)
         payload={}
         if access_token:
             # 2. Vérifier le token
             try:
                 payload = jwt.decode(access_token, self.secret_key, algorithms=[self.algo])
-                self.bugprint('💀 Token alive auth_secret ,payload',payload)
+                self.bugprint(varSession,'💀 Token alive auth_secret ,payload',payload)
             except JWTError:
                 # Token invalide ou expiré → redirection vers /refresh avec next
-                self.bugprint('💀 Token expiré auth_secret')
+                self.bugprint(varSession,'💀 Token expiré auth_secret')
     
         # 3. Extraire les infos de l'utilisateur depuis le token interne
         user={}
@@ -508,14 +584,14 @@ class Zapiz:
                 return JSONResponse( status_code=404, content={"detail": "Ressource introuvable"})
                 #return HTMLResponse(content= "<h1>404 - Page non trouvée</h1>", status_code=404)
             else:
-                self.bugprint("_secure_api_tab,wrappper",[self.api_routes[verb][uri]])
+                self.bugprint(request,"_secure_api_tab,wrappper",[self.api_routes[verb][uri]])
 
             varSession={}
             varSession['request']=request
             # 🔍 Détection de la méthode HTTP
             #verb = request.method
             #uri  = request.url.path
-            self.bugprint(f"✅ wrapper {verb} {uri} réussie : {varSession}")
+            self.bugprint(request,f"✅ wrapper {verb} {uri} réussie : {varSession}")
             #print(f"💡 request : {request.path_params}")
             #print(f"💡 request : {request}")
             varSession['verb']=verb
@@ -536,7 +612,7 @@ class Zapiz:
             curUser=self.api_tokens_status(request)
             user="Anonyme"
             if curUser:
-                self.bugprint('🗯️🗯️',[curUser])
+                self.bugprint(request,'🗯️🗯️',[curUser])
                 # 🔑 ta logique d'auth ici
                 user = curUser['payload']['preferred_username']
 
