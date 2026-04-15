@@ -26,6 +26,8 @@ import os
 import inspect
 import httpx
 from jose import jwt, JWTError
+import logging
+import time
 
 import csv
 import bcrypt
@@ -45,6 +47,9 @@ class Zapiz:
         self.host = host
         self.port = port
         self.app = FastAPI(title=title,description=description,version=version,docs_url=docs_url,redoc_url=redoc_url,openapi_url=openapi_url)
+        logging.basicConfig( level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
+        self.logger = logging.getLogger("myapi")
+        self._setup_middlewares()
         self.templates={}
         self.templates['base']=Jinja2Templates(directory=template_dir)
         self.app.mount("/"+static_dir, StaticFiles(directory=root+static_dir), name="static")
@@ -91,6 +96,29 @@ class Zapiz:
 
                 return response
 
+    def _setup_middlewares(self):
+        @self.app.middleware("http")
+        async def log_requests(request: Request, call_next):
+            start = time.time()
+
+            response = await call_next(request)
+            duration = time.time() - start
+            state = request.scope.get("state")
+
+            if isinstance(state, dict):
+                user = state.get("user")
+            else:
+                user = getattr(state, "user", None)
+
+            self.logger.info(
+                f"{request.client.host}({user}) "
+                f"{request.method} {request.url.path} "
+                f"{response.status_code} "
+                f"{duration:.3f}s"
+            )
+
+            return response
+
     def bugprint(self,chaine,liste1=[]):
         if not self.debug:
             return
@@ -103,7 +131,7 @@ class Zapiz:
             print(chaine)
 
     def run(self):
-        uvicorn.run(self.app, host=self.host, port=self.port)
+        uvicorn.run(self.app, host=self.host, port=self.port,access_log=False)
 
     def add_template(self,template_dir,templateid=None):
         if not templateid:
@@ -506,10 +534,17 @@ class Zapiz:
 
             #print(f'🗯️{uri}')
             curUser=self.api_tokens_status(request)
+            user="Anonyme"
             if curUser:
                 self.bugprint('🗯️🗯️',[curUser])
+                # 🔑 ta logique d'auth ici
+                user = curUser['payload']['preferred_username']
+
                 for i in ['sub','name','email','groups']:
                     varSession[i]=curUser['datas'].get(i)
+
+            # 👉 injecter dans le state
+            request.state.user = user
 
             if self.api_routes[verb][uri]['acl']:
                 #Gestion des droits....
