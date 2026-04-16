@@ -138,7 +138,7 @@ class Zapiz:
             "user": user,
             }
 
-    def bugprint(self,infos,chaine,liste1=[],debug=False):
+    def bugprint(self,infos,chaine,liste1=None,debug=False):
         if not self.debug and not debug:
             return
 
@@ -148,9 +148,8 @@ class Zapiz:
         else:
                 user="Anonymous"
 
-        if len(liste1):
-            for i in liste1:
-                self.logger.info(f"{user} {chaine}: {i}")
+        if liste1 is not None:
+            self.logger.info(f"{user} {chaine}: {liste1}")
         else:
             self.logger.info(f"{user} {chaine}")
 
