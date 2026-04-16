@@ -108,8 +108,14 @@ class Zapiz:
             else:
                 user = getattr(state, "user", None)
 
+            ip = obj.headers.get("x-forwarded-for")
+            if ip:
+                ip = ip.split(",")[0].strip()
+            else:
+                ip = obj.client.host
+
             ret= {
-                "ip": obj.client.host,
+                "ip": ip,
                 "user": user,
                 "mth": obj.method,
                 "uri": obj.url.path
@@ -118,72 +124,28 @@ class Zapiz:
             #self.logger.info(f"Request {ret['user']}@{ret['ip']}:{ret['uri']}")
             return(ret)
 
-        # Franchement c'est tout a refaire en dessous là (TODO : reDO or better... DO!!!)
-        # --- CAS 1 : Request (Starlette / FastAPI) ---
-        if hasattr(obj, "url"):
-            uri = str(obj.url)
-
-        if hasattr(obj, "client") and obj.client:
-            ip = getattr(obj.client, "host", None)
-
-        # user via request.state
-        if hasattr(obj, "state"):
-            user = getattr(obj.state, "user", None)
-
-        # fallback via scope
-        if hasattr(obj, "scope"):
-            scope = obj.scope
-
-            # URI fallback
-            uri = uri or scope.get("path")
-
-            # IP fallback
-            if not ip:
-                client = scope.get("client")
-                if client:
-                    ip = client[0]
-
-            # user fallback
-            state = scope.get("state")
-            if isinstance(state, dict):
-                user = user or state.get("user")
-
-        # --- CAS 2 : dict (type varSession probable) ---
-        if isinstance(obj, dict):
-            uri = uri or obj.get("uri") or obj.get("url")
-            ip = ip or obj.get("ip") or obj.get("client_ip")
-            user = user or obj.get("user")
-
-        # --- CAS 3 : objet custom ---
-        if not isinstance(obj, dict):
-            print(obj)
-            return(None)
-            uri = uri or getattr(obj, "uri", None) or getattr(obj, "url", None)
-            ip = ip or getattr(obj, "ip", None)
-            user = user or getattr(obj, "user", None)
-
         return {
             "uri": uri,
             "ip": ip,
             "user": user,
-        }
+            }
 
     def bugprint(self,infos,chaine,liste1=[]):
         #if isinstance(infos,Request):
         #    return()
-        trucs=self.extract_request_info(infos)
-        if trucs is not None:
-                pouette=trucs['user']
+        traduc=self.extract_request_info(infos)
+        if traduc is not None:
+                user=traduc['user']
         else:
-                pouette="Anonymous"
+                user="Anonymous"
 
         if not self.debug:
             return
         if len(liste1):
             for i in liste1:
-                self.logger.info(f"{pouette} {chaine}: {i}")
+                self.logger.info(f"{user} {chaine}: {i}")
         else:
-            self.logger.info(f"{pouette} {chaine}")
+            self.logger.info(f"{user} {chaine}")
 
     def _setup_middlewares(self):
         @self.app.middleware("http")
@@ -192,11 +154,11 @@ class Zapiz:
 
             response = await call_next(request)
             duration = time.time() - start
-            trucs=self.extract_request_info(request)
+            traduc=self.extract_request_info(request)
 
             self.logger.info(
-                f"{trucs['ip']}({trucs['user']}) "
-                f"{trucs['mth']} {trucs['uri']} "
+                f"{traduc['ip']}({traduc['user']}) "
+                f"{traduc['mth']} {traduc['uri']} "
                 f"{response.status_code} "
                 f"{duration:.3f}s"
                 )
