@@ -101,6 +101,9 @@ class Zapiz:
         ip = None
         user = None
 
+        if isinstance(obj,dict) and 'request' in obj.keys():
+            obj=obj['request']
+
         if isinstance(obj, Request):
             state = obj.scope.get("state")
             if isinstance(state, dict):
@@ -123,24 +126,28 @@ class Zapiz:
                 }
             #self.logger.info(f"Request {ret['user']}@{ret['ip']}:{ret['uri']}")
             return(ret)
+        else:
+            self.logger.info('EXTRACTEUR A FAIRE AVANCER')
+            self.logger.info(type(obj))
+            self.logger.info(obj)
 
         return {
             "uri": uri,
             "ip": ip,
+            "mth": None,
             "user": user,
             }
 
-    def bugprint(self,infos,chaine,liste1=[]):
-        #if isinstance(infos,Request):
-        #    return()
+    def bugprint(self,infos,chaine,liste1=[],debug=False):
+        if not self.debug and not debug:
+            return
+
         traduc=self.extract_request_info(infos)
         if traduc is not None:
                 user=traduc['user']
         else:
                 user="Anonymous"
 
-        if not self.debug:
-            return
         if len(liste1):
             for i in liste1:
                 self.logger.info(f"{user} {chaine}: {i}")
@@ -575,7 +582,7 @@ class Zapiz:
             user="Anonyme"
             if curUser:
                 self.bugprint(request,'🗯️🗯️',[curUser])
-                # 🔑 ta logique d'auth ici
+                # 🔑 la logique d'auth ici
                 user = curUser['payload']['preferred_username']
 
                 for i in ['sub','name','email','groups']:
