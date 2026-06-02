@@ -418,7 +418,7 @@ class Pano:
         resp=await self.action(hero)
         datas=resp.get('Output',None)
         if datas == None:
-            return(resulat)
+            return(resultat)
         datas.pop()
         #print(f"FEED DB")
         preClef=None
