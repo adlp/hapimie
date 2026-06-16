@@ -14,8 +14,8 @@
 
 <h2>Connexion via Authentik</h2>
 {% if authentik_url %}
-<button type="button" onclick="window.location.href='{{ authentik_url }}?client_id={{ oidc_client_id }}&redirect_uri={{ oidc_redirect_uri }}&response_type=code&scope=profile%20email%20openid'">
+<center><button type="button" onclick="window.location.href='{{ authentik_url }}?client_id={{ oidc_client_id }}&redirect_uri={{ oidc_redirect_uri }}&response_type=code&scope=profile%20email%20openid'">
     Login via Authentik
-</button>
+</button></center>
 {% endif %}
 {% endblock %}
