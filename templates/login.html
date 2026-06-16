@@ -1,6 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Login{% endblock %}
 {% block content %}
+
+{% if authentik_url %}
+<h2>Connexion via Authentik</h2>
+<center><button type="button" onclick="window.location.href='{{ authentik_url }}?client_id={{ oidc_client_id }}&redirect_uri={{ oidc_redirect_uri }}&response_type=code&scope=profile%20email%20openid'">
+    Login via Authentik
+</button></center>
+<hr>
+{% endif %}
 <h2>Connexion locale</h2>
 <form method="post" action="/login/localback">
     <label for="username">Nom d'utilisateur</label>
@@ -10,12 +18,6 @@
     <button type="submit">Login</button>
 </form>
 
-<hr>
 
-<h2>Connexion via Authentik</h2>
-{% if authentik_url %}
-<center><button type="button" onclick="window.location.href='{{ authentik_url }}?client_id={{ oidc_client_id }}&redirect_uri={{ oidc_redirect_uri }}&response_type=code&scope=profile%20email%20openid'">
-    Login via Authentik
-</button></center>
-{% endif %}
+
 {% endblock %}
